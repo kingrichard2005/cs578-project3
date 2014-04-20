@@ -6,7 +6,6 @@ Trains a Naive Bayes classifier to label patients as SMOKING, NON-SMOKING or
 UNKNOWN based on available (scrubbed) medical record information.
 
 optional arguments:
-  -h, --help            show this help message and exit
   -t TRAININGSET, --trainingSet TRAININGSET
                         The path to the labeled medical record training set
                         file
