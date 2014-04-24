@@ -136,14 +136,14 @@ def calcFeatureHammingDistance(a, b):
     FeatureHammingDistance = 0.0;
     for x, y in zip(a, b):
         # terms as a list of binary encoded strings
-        xFoo = ' '.join(format(ord(xF), 'b') for xF in x).split(' ')
-        yFoo = ' '.join(format(ord(yF), 'b') for yF in y).split(' ')
+        list1 = ' '.join(format(ord(xF), 'b') for xF in x).split(' ')
+        list2 = ' '.join(format(ord(yF), 'b') for yF in y).split(' ')
         # match list lengths by setting lists equal to shortest list
         # NOTE:  Review since we are essentially trimming extra terms
         # from the record with the larrger term feature vector
-        xFoo = xFoo[0:len(yFoo)] if ( len(yFoo) < len(xFoo) ) else xFoo
-        yFoo = yFoo[0:len(xFoo)] if ( len(xFoo) < len(yFoo) ) else yFoo
-        for subx, suby in zip(xFoo, yFoo):
+        list1 = list1[0:len(list2)] if ( len(list2) < len(list1) ) else list1
+        list2 = list2[0:len(list1)] if ( len(list1) < len(list2) ) else list2
+        for subx, suby in zip(list1, list2):
             FeatureHammingDistance += hamdist(subx, suby)
 
     return FeatureHammingDistance;
@@ -215,11 +215,12 @@ if __name__ == '__main__':
         # get minimum distance from each neighbor
         finalLabels = {}
         for vector in recordClassificationStats.iteritems():
-            # get feature vectors
+            # identify which neighbor was 'nearest' to
+            # each example and output the nearest neighbor's actual class along with
+            # the example's predicted class.
             distanceFromNeighbor      = vector[1]['distance']
             maxProb                   = min(distanceFromNeighbor.iteritems(), key=operator.itemgetter(1))[0]
-            # key class label for nearest neighbor
-            # TODO: optimize
+            # TODO: refactor implementation
             predictedLabel = '';
             for doc in documentTuples:
                 if doc[0] == maxProb:
