@@ -129,7 +129,10 @@ def computeSimilarityToKSamples( w,c,termClassOccurrenceLookup,totalTermsInTrain
     return P_wc;
 
 def calcFeatureHammingDistance(a, b):
-    '''Calculate total hamming distance for all terms in the feature vector'''
+    '''Calculate total hamming distance for all terms in the feature vector
+        TODO: Implement alternative similarity measure.  This initial approach is naive 
+        in that we lose potentially relevant information from the longer term feature 
+        vector when equalizing the vector lengths to compute their Hamming Distance similiarity.'''
     FeatureHammingDistance = 0.0;
     for x, y in zip(a, b):
         # terms as a list of binary encoded strings
@@ -203,7 +206,8 @@ if __name__ == '__main__':
             for kthNeighbor in kNeighbors:
                 kthNeighborId                              = kthNeighbor[0];
                 neighborTermFeatureVector                  = kthNeighbor[2].split(' ');
-                # Compute Hamming Distance to determine how similar record's are to feature vector
+                # Use the Hamming Distance as a way to determine the similarity between this record's term
+                # term feature vector nad it's kthNeighbor
                 featureHammingDistance = 0.0;
                 featureHammingDistance = calcFeatureHammingDistance(neighborTermFeatureVector, recordTermFeatureVector);
                 recordClassificationStats[recordId]['distance'][kthNeighborId]     = featureHammingDistance;
