@@ -221,6 +221,25 @@ def getEncodedRecordsSubsetsForClassLabels(recordTuples,classificationLabels,ter
     except:
         print "error generating encoded record subsets for class labels"
 
+def getTopKScoringVectors(collection,K):
+    '''Get top K scoring records from collection'''
+    try:
+        topScoring  = []
+        topKRecords = []
+        # TODO: revise
+        for record in collection:
+            # sum score
+            topScoring.append([record[0],sum(record[2])])
+        topScoring = sorted(topScoring, key=operator.itemgetter(1),reverse=True);
+
+        for topRecord in topScoring[0:K]:
+            for record in collection:
+                if record[0] == topRecord[0]:
+                    topKRecords.append(record);
+        return topKRecords;
+    except:
+        print "error getting top K vectors"
+
 def getStagingSamples(encodedRecordSubsets,classificationLabels,K):
     '''Generate a staging pool of K sample from each class label
         subset.'''
@@ -228,8 +247,10 @@ def getStagingSamples(encodedRecordSubsets,classificationLabels,K):
         stagingSample = [];
         for classLabel in classificationLabels:
             if encodedRecordSubsets.has_key(classLabel):
-                tmp = random_subset( encodedRecordSubsets[classLabel], K );
-                stagingSample.append( random_subset( encodedRecordSubsets[classLabel], K ) )
+                # get get 'K' top-scoring records from each class label subset
+                subset = encodedRecordSubsets[classLabel];
+                tmp    = getTopKScoringVectors(subset,K)
+                stagingSample.append( tmp )
         # return a flattened list of records sampled from each class
         return [value for row in stagingSample for value in row];
     except:
