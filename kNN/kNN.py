@@ -352,11 +352,14 @@ if __name__ == '__main__':
             finalLabels[vector[0]]    = [predictedLabel,vector[1]['actual_label']];
 
         print "'{0}' records classified".format(len(finalLabels))
-        actualLbls    = [];
-        predictedLbls = [];
+        actualLbls        = [];
+        predictedLbls     = [];
+        longestClassLabel = max(len(s) for s in classificationLabels)
         for output in sorted(finalLabels.iteritems(), key=operator.itemgetter(0)):
+            tmp      = [" "] * abs( len(output[1][0]) - longestClassLabel);
+            spacePad = "".join(tmp);
             actualLbls.append( output[1][1] );
             if output[1][0] == output[1][1]:
                 predictedLbls.append( output[1][0] );
-            print "Record Id: '{0}' Classified as '{1}',Actual Classification: '{2}'".format(str(output[0]),output[1][0],output[1][1]);
+            print "Record Id: '{0:03}' Classified as '{1}'{2},Actual Classification: '{3}'".format( int(output[0]) ,output[1][0], spacePad,output[1][1]);
         print "Correctly classified: '{0}' of '{1}' records".format( len(predictedLbls),len(actualLbls) );
