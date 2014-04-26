@@ -1,8 +1,8 @@
 #-------------------------------------------------------------------------------
 # Name:        cs-578-project 3
-# Purpose:     Trains a k-Nearest Neighbor classifier to apply labels to scrubbed 
-# medical records identfying patients as either 'smoking', 'non-smoking', 
-# or 'unknown' class.
+# Description:     A prototype trainer for a K-Nearest Neighbor classifier that 
+# attempts to classify patients into one of three categories: 'SMOKER, 'NON-SMOKER'
+# , and 'UNKNOWN'
 #   
 # Author:      kingrichard2005
 #
@@ -163,7 +163,7 @@ if __name__ == '__main__':
                     ,dest="kNeighbors"
                     ,default = 3
                     ,type=int
-                    ,help="Total neighbors to compare to in each class.");
+                    ,help="Total neighbors to sample.");
     args = parser.parse_args();
     # check arguments, training set is required.
     if os.path.isfile( args.trainingSet ) is False:
@@ -172,8 +172,8 @@ if __name__ == '__main__':
         ####
         # Collect required components
         documentTuples                        = getTrainingSetTuples(args.trainingSet);
-        classificationLabels                  = ['SMOKER','NON-SMOKER','UNKNOWN']                                          # classificiation labels
         documentTuples                        = removeNumbersAndPunctuation(documentTuples);                               # Process record tuples
+        classificationLabels                  = ['SMOKER','NON-SMOKER','UNKNOWN']                                          # classificiation labels
         uniqueTermsList                       = getUniqueTerms(documentTuples);                                            # get unique terms in problem space
         termClassOccurrenceLookup             = getTermClassOccurenceLookup(documentTuples,uniqueTermsList);               # get Tf_wc
         # get C = |c| = total number of terms that occur in training documents with class label 'c'
@@ -207,7 +207,7 @@ if __name__ == '__main__':
                 kthNeighborId                              = kthNeighbor[0];
                 neighborTermFeatureVector                  = kthNeighbor[2].split(' ');
                 # Use the Hamming Distance as a way to determine the similarity between this record's term
-                # term feature vector nad it's kthNeighbor
+                # term feature vector nad it's kth-Neighbor
                 featureHammingDistance = 0.0;
                 featureHammingDistance = calcFeatureHammingDistance(neighborTermFeatureVector, recordTermFeatureVector);
                 recordClassificationStats[recordId]['distance'][kthNeighborId]     = featureHammingDistance;
