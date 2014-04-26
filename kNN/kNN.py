@@ -117,13 +117,13 @@ def calculateVectorSimilarity(x, y):
         if abs(len(x)-len(y)) != 0:
             zeroPad = [0] * abs(len(x)-len(y));
             if ( len(x) < len(y) ):
-                sumAcc += len(y)
                 for e in zeroPad:
                     localX.append(e);
             else:
-                sumAcc += len(x)
                 for e in zeroPad:
                     localY.append(e);
+        
+        sumAcc += len(localY)
         for a in xrange(0,sumAcc):
             euclideanDistance += float( (localX[a]-localY[a])**2 );
         euclideanDistance = math.sqrt(euclideanDistance);
