@@ -126,7 +126,7 @@ def calculateVectorSimilarity(x, y):
                     localY.append(e);
         for a in xrange(0,sumAcc):
             euclideanDistance += float( (localX[a]-localY[a])**2 );
-
+        euclideanDistance = math.sqrt(euclideanDistance);
         # return distance measure rounded to 4 decimal places
         return round(euclideanDistance,4);
     except:
@@ -172,9 +172,9 @@ def getTermRanksPerClass(uniqueTermsList , classificationLabels, documentTuples)
                 # n_ab: num. of records containing term and label (n_ab)
                 n_ab             = len( intersectionSet )
                 # Compute Chi-square
-                # result         = calcChiSquare(n_a,n_b,n_ab,len(documentTuples));
+                result         = calcChiSquare(n_a,n_b,n_ab,len(documentTuples));
                 # Compute Dice's Coefficient
-                result           = calcDiceCoeff(n_a,n_b,n_ab);
+                #result           = calcDiceCoeff(n_a,n_b,n_ab);
                 if termRankingsPerClass.has_key(classLabel,):
                     termRankingsPerClass[classLabel].append( (term,result) );
                 else:
