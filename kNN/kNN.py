@@ -1,8 +1,8 @@
 #-------------------------------------------------------------------------------
 # Name:        cs-578-project 3
 # Description:     A prototype trainer for a K-Nearest Neighbor classifier that 
-# attempts to classify unlabeled patients into one of three categories: 'SMOKER, 'NON-SMOKER'
-# , or 'UNKNOWN'
+# attempts to predict smoaking status for unlabeled patients as one of three categories: 'SMOKER, 'NON-SMOKER'
+# , or 'UNKNOWN'.  Classifier is trainied using a precompiled collection of labeled training record data
 #   
 # Author:      kingrichard2005
 #
@@ -17,18 +17,6 @@ import os
 import argparse
 import random
 import cPickle as pickle
-
-def calcHamDist(str1, str2):
-    '''(REVISE THIS LOOKS WRONG) Calc Hamming Distance as # of differences between two strings
-    strings str1 and str2, borrowed from http://code.activestate.com/recipes/499304-hamming-distance/'''
-    try:
-        diffs = 0
-        for ch1, ch2 in zip(str1, str2):
-            if ch1 != ch2:
-                diffs += 1
-        return diffs;
-    except:
-        print "error calculating hamming distance for strings {0} and {1}".format(str1,str2)
 
 def random_subset( sampleList, K ):
     '''(REVIEW) Implementation of resevoir sampling in Python borrowed from
@@ -117,46 +105,35 @@ def getTrainingSetTuples(trainingSet):
     except:
         print "error getting record tuples from training set file {0}".format(str(trainingSet));
 
-def computeSimilarityToKSamples( w,c,termClassOccurrenceLookup,totalTermsInTrainingDocPerClass,recordTermFeatureVector):
+def calculateVectorSimilarity(x, y):
+    '''Calculate the similarity between two vectors using the Euclidean Distance function.'''
     try:
-        ''' Computes the probability that term 'w' belongs to class 'c' '''
-        tf         = termClassOccurrenceLookup[w][c];
-        cfw        = sum( i[1] for i in termClassOccurrenceLookup[w].iteritems() );
-        # |c|
-        _c         = math.fabs(totalTermsInTrainingDocPerClass[c])
-        C          = sum(i[1] for i in totalTermsInTrainingDocPerClass.iteritems());
-        P_wc = 0.0
-        # V
-        V          = float(len(recordTermFeatureVector))
-        return P_wc;
-    except:
-        print "error computing probability term 'w'"
+        euclideanDistance = 0.0;
+        localX = x[:];
+        localY = y[:];
+        sumAcc = 0;
+        # if lengths differ
+        # pad shorter vector with zeroes
+        if abs(len(x)-len(y)) != 0:
+            zeroPad = [0] * abs(len(x)-len(y));
+            if ( len(x) < len(y) ):
+                sumAcc += len(y)
+                for e in zeroPad:
+                    localX.append(e);
+            else:
+                sumAcc += len(x)
+                for e in zeroPad:
+                    localY.append(e);
+        for a in xrange(0,sumAcc):
+            euclideanDistance += float( (localX[a]-localY[a])**2 );
 
-def calcTermVectorHammingDistance(a, b):
-    '''Calculate total hamming distance for all terms in the feature vector
-        TODO: Implement alternative similarity measure.  This initial approach is naive 
-        in that we lose potentially relevant information from the longer term feature 
-        vector when equalizing the vector lengths to compute their Hamming Distance similiarity.'''
-    try:
-        FeatureHammingDistance = 0.0;
-        for x, y in zip(a, b):
-            # terms as a list of binary encoded strings
-            list1 = ' '.join(format(ord(xF), 'b') for xF in x).split(' ')
-            list2 = ' '.join(format(ord(yF), 'b') for yF in y).split(' ')
-            # match list lengths by setting lists equal to shortest list
-            # NOTE:  Review since we are essentially trimming extra terms
-            # from the record with the larrger term feature vector
-            list1 = list1[0:len(list2)] if ( len(list2) < len(list1) ) else list1
-            list2 = list2[0:len(list1)] if ( len(list1) < len(list2) ) else list2
-            for subx, suby in zip(list1, list2):
-                FeatureHammingDistance += calcHamDist(subx, suby)
-
-        return FeatureHammingDistance;
+        # return distance measure rounded to 4 decimal places
+        return round(euclideanDistance,4);
     except:
-        print "error calculating TermVectorHammingDistance"
+        print "error calculating similarity score"
 
 def calcChiSquare(n_a,n_b,n_ab,N):
-    '''Calculates the Chi-Square and returns the float value 
+    '''Calculates the Chi-Square and returns the float value rounded to 4 decimal places
         see Search Engines: Information Retrieval in Practice ( Ch 6.2 )'''
     try:
         result = float( (n_ab - (float(1/N) * n_a * n_b)  )**2 )  / (n_a * n_b);
@@ -165,7 +142,7 @@ def calcChiSquare(n_a,n_b,n_ab,N):
         print "error calculating chiSquare"
 
 def calcDiceCoeff(n_a,n_b,n_ab):
-    '''Calculates the Dice coefficient and returns the float value 
+    '''Calculates the Dice coefficient and returns the float value rounded to 4 decimal places
         see Search Engines: Information Retrieval in Practice ( Ch 6.2 )'''
     try:
         #result = float( n_ab  / n_a + n_b );silly me
@@ -244,6 +221,20 @@ def getEncodedRecordsSubsetsForClassLabels(recordTuples,classificationLabels,ter
     except:
         print "error generating encoded record subsets for class labels"
 
+def getStagingSamples(encodedRecordSubsets,classificationLabels,K):
+    '''Generate a staging pool of K sample from each class label
+        subset.'''
+    try:
+        stagingSample = [];
+        for classLabel in classificationLabels:
+            if encodedRecordSubsets.has_key(classLabel):
+                tmp = random_subset( encodedRecordSubsets[classLabel], K );
+                stagingSample.append( random_subset( encodedRecordSubsets[classLabel], K ) )
+        # return a flattened list of records sampled from each class
+        return [value for row in stagingSample for value in row];
+    except:
+        print "error getting staging sample"
+    
 def storeObject(objectToPersist,path):
     try:
         pickle.dump( objectToPersist, open( path, "wb" ) )
@@ -323,8 +314,7 @@ if __name__ == '__main__':
         ###Module
         # For each document in the training set, compute similarity to 'K' nearest neighbors for each label
         K = args.kNeighbors
-
-
+        stagingCollection  = getStagingSamples(encodedRecordSubsets,classificationLabels,K)
         # compute similarity vectors for each class label for each record
         # for each document in the training set...
         recordClassificationStats = {};
@@ -333,19 +323,17 @@ if __name__ == '__main__':
             recordLabel                              = record[1]
             recordTermFeatureVector                  = record[2].split(' ');
             recordClassificationStats[recordId]      = {'distance':{} , 'actual_label':recordLabel};
-
-
             # compute 'K' nearest neighbor
             # get k-random neighbors
-            stagingCollection = random_subset( recordTuples, K )
-            for kthNeighbor in stagingCollection:
+            sample = random_subset( stagingCollection, K )
+            for kthNeighbor in sample:
                 kthNeighborId                              = kthNeighbor[0];
-                neighborTermFeatureVector                  = kthNeighbor[2].split(' ');
-                # Use the Hamming Distance as a way to determine the similarity between this record's term
-                # term feature vector nad it's kth-Neighbor
-                featureHammingDistance = 0.0;
-                featureHammingDistance = calcTermVectorHammingDistance(neighborTermFeatureVector, recordTermFeatureVector);
-                recordClassificationStats[recordId]['distance'][kthNeighborId]     = featureHammingDistance;
+                neighborTermFeatureVector                  = kthNeighbor[2];
+                # get this examples vector score for this neighbors SMOKING STATUS class label
+                recordTermFeatureVector                    = getRecordTermRankScoreVector(record,termRankings,kthNeighbor[1]);
+                # Calculate the similarity score
+                similarityScore = calculateVectorSimilarity(neighborTermFeatureVector, recordTermFeatureVector);
+                recordClassificationStats[recordId]['distance'][kthNeighborId]     = similarityScore;
         
         ###Module
         # get minimum distance from each neighbor
@@ -356,7 +344,6 @@ if __name__ == '__main__':
             # the example's predicted class.
             distanceFromNeighbor      = vector[1]['distance']
             maxProb                   = min(distanceFromNeighbor.iteritems(), key=operator.itemgetter(1))[0]
-            # TODO: refactor implementation
             predictedLabel = '';
             for doc in recordTuples:
                 if doc[0] == maxProb:
