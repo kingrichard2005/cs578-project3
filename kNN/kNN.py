@@ -1,7 +1,7 @@
 #-------------------------------------------------------------------------------
 # Name:        cs-578-project 3
 # Description:     A prototype trainer for a K-Nearest Neighbor classifier that 
-# attempts to classify patients into one of three categories: 'SMOKER, 'NON-SMOKER'
+# attempts to classify unlabeled patients into one of three categories: 'SMOKER, 'NON-SMOKER'
 # , or 'UNKNOWN'
 #   
 # Author:      kingrichard2005
@@ -212,9 +212,37 @@ def getTermRanksPerClass(uniqueTermsList , classificationLabels, documentTuples)
     except:
         print 'error getting TermRanksPerClass'
 
-def getRankedSubsets(documentTuples,classificationLabels,termRankings):
-
-    return 0;
+def getRecordTermRankScoreVector(record,termRankReference,classLabel):
+    try:
+        recordScoreVector = [];
+        # convert term rank reference to lookup
+        tmpLookup = {};
+        if termRankReference.has_key(classLabel):
+            for t in termRankReference[classLabel]:
+                tmpLookup[t[0]] = t[1];
+        for term in record[2].split(' '):
+            if tmpLookup.has_key(term):
+                recordScoreVector.append(tmpLookup[term]);
+        return recordScoreVector;
+    except:
+        print "error getting record score"
+        
+def getEncodedRecordsSubsetsForClassLabels(recordTuples,classificationLabels,termRankings):
+    '''Generate record tuple subsets per classification label 
+        with term feature vectors encoded with corresponding term rank scores'''
+    try:
+        # for each classification label
+        labelRecordSubSets = {}
+        for classLabel in classificationLabels:
+            labelRecordSubSets[classLabel] = [];
+            classLbelRecordSubset          = [t for t in recordTuples if t[1] == classLabel];
+            for record in classLbelRecordSubset:
+                featureVectorScore = getRecordTermRankScoreVector(record,termRankings,classLabel)
+                encodedRecord      = (record[0],record[1],featureVectorScore)
+                labelRecordSubSets[classLabel].append(encodedRecord)
+        return labelRecordSubSets;
+    except:
+        print "error generating encoded record subsets for class labels"
 
 def storeObject(objectToPersist,path):
     try:
@@ -255,10 +283,10 @@ if __name__ == '__main__':
     else:
         ###Module
         # Collect required components
-        documentTuples                        = getTrainingSetTuples(args.trainingSet);
-        documentTuples                        = removeNumbersAndPunctuation(documentTuples);                               # Process record tuples
+        recordTuples                          = getTrainingSetTuples(args.trainingSet);
+        recordTuples                          = removeNumbersAndPunctuation(recordTuples);                               # Process record tuples
         classificationLabels                  = ['SMOKER','NON-SMOKER','UNKNOWN']                                          # classificiation labels
-        uniqueTermsList                       = getUniqueTerms(documentTuples);                                            # get unique terms in problem space
+        uniqueTermsList                       = getUniqueTerms(recordTuples);                                            # get unique terms in problem space
         
         ###Module
         termRankings = [];
@@ -271,21 +299,20 @@ if __name__ == '__main__':
             # Need:
             # uniqueTermsList      - for reference
             # classificationLabels - for reference
-            # documentTuples       - training set for ranking
-            termRanksPerClass = getTermRanksPerClass(uniqueTermsList , classificationLabels, documentTuples);
+            # documentTuples       - training set to rank
+            termRanksPerClass = getTermRanksPerClass(uniqueTermsList , classificationLabels, recordTuples);
             # persist rankings for training
             storeObject(termRanksPerClass,"C:\\temp\\datasets\\traningSetRankings.p");
 
-        # Generate ranked subsets for each class
-        rankedRecordSubsets = getRankedSubsets(documentTuples,classificationLabels,termRankings)
-
+        # Generate feature vector encoded record subsets for each class
+        encodedRecordSubsets = getEncodedRecordsSubsetsForClassLabels(recordTuples,classificationLabels,termRankings)
 
         # get C = |c| = total number of terms that occur in training documents with class label 'c'
-        totalTermsInTrainingDocPerClass       =  getTotalNumTermsInTrainingDocPerClass(documentTuples,classificationLabels)# Get total 'N'
-        totalNtrainingInstances               = len(documentTuples);
-        counts                                = { 'SMOKER'    : len([x for x in documentTuples if x[1] == 'SMOKER'])
-                                                , 'NON-SMOKER': len([x for x in documentTuples if x[1] == 'NON-SMOKER' ])
-                                                , 'UNKNOWN'   : len([x for x in documentTuples if x[1] == 'UNKNOWN']) 
+        totalTermsInTrainingDocPerClass       =  getTotalNumTermsInTrainingDocPerClass(recordTuples,classificationLabels)# Get total 'N'
+        totalNtrainingInstances               = len(recordTuples);
+        counts                                = { 'SMOKER'    : len([x for x in recordTuples if x[1] == 'SMOKER'])
+                                                , 'NON-SMOKER': len([x for x in recordTuples if x[1] == 'NON-SMOKER' ])
+                                                , 'UNKNOWN'   : len([x for x in recordTuples if x[1] == 'UNKNOWN']) 
                                                 }
         # proportion 'P(c)' lookup of training instances with label 'c'
         proportionLookup = {
@@ -296,10 +323,12 @@ if __name__ == '__main__':
         ###Module
         # For each document in the training set, compute similarity to 'K' nearest neighbors for each label
         K = args.kNeighbors
+
+
         # compute similarity vectors for each class label for each record
         # for each document in the training set...
         recordClassificationStats = {};
-        for record in documentTuples:
+        for record in recordTuples:
             recordId                                 = record[0]
             recordLabel                              = record[1]
             recordTermFeatureVector                  = record[2].split(' ');
@@ -308,7 +337,7 @@ if __name__ == '__main__':
 
             # compute 'K' nearest neighbor
             # get k-random neighbors
-            stagingCollection = random_subset( documentTuples, K )
+            stagingCollection = random_subset( recordTuples, K )
             for kthNeighbor in stagingCollection:
                 kthNeighborId                              = kthNeighbor[0];
                 neighborTermFeatureVector                  = kthNeighbor[2].split(' ');
@@ -329,7 +358,7 @@ if __name__ == '__main__':
             maxProb                   = min(distanceFromNeighbor.iteritems(), key=operator.itemgetter(1))[0]
             # TODO: refactor implementation
             predictedLabel = '';
-            for doc in documentTuples:
+            for doc in recordTuples:
                 if doc[0] == maxProb:
                     predictedLabel = doc[1];
                     break;
