@@ -337,7 +337,7 @@ if __name__ == '__main__':
         
         ###Module
         # get minimum distance from each neighbor
-        finalLabels = {}
+        finalLabels = {};
         for vector in recordClassificationStats.iteritems():
             # identify which neighbor was 'nearest' to
             # each example and output the nearest neighbor's actual class along with
