@@ -105,10 +105,10 @@ def getTrainingSetTuples(trainingSet):
     except:
         print "error getting record tuples from training set file {0}".format(str(trainingSet));
 
-def calculateVectorSimilarity(x, y):
+def calculateVectorSimilarity(x, y, similarity_func = 'euclidean'):
     '''Calculate the similarity between two vectors using the Euclidean Distance function.'''
     try:
-        euclideanDistance = 0.0;
+        similarityDistance = 0.0;
         localX = x[:];
         localY = y[:];
         sumAcc = 0;
@@ -124,11 +124,24 @@ def calculateVectorSimilarity(x, y):
                     localY.append(e);
         
         sumAcc += len(localY)
-        for a in xrange(0,sumAcc):
-            euclideanDistance += float( (localX[a]-localY[a])**2 );
-        euclideanDistance = math.sqrt(euclideanDistance);
+
+        if similarity_func == 'minkowski':
+            for a in xrange(0,sumAcc):
+                p = localX[a];
+                similarityDistance += math.pow( float( abs(localX[a]-localY[a]) ),float(p) );
+            similarityDistance = math.pow( similarityDistance,float( 1/len(localX) ) );
+        elif similarity_func == 'manhatten':
+            for a in xrange(0,sumAcc):
+                similarityDistance += float( abs(localX[a]-localY[a]) );
+            similarityDistance = math.sqrt(similarityDistance);
+        # detault to Euclidean distance measure
+        else:
+            for a in xrange(0,sumAcc):
+                similarityDistance += float( (localX[a]-localY[a])**2 );
+            similarityDistance = math.sqrt(similarityDistance);
+        
         # return distance measure rounded to 4 decimal places
-        return round(euclideanDistance,4);
+        return round(similarityDistance,4);
     except:
         print "error calculating similarity score"
 
@@ -240,7 +253,7 @@ def getTopKScoringVectors(collection,K):
     except:
         print "error getting top K vectors"
 
-def getStagingSamples(encodedRecordSubsets,classificationLabels,K):
+def getStagingSamples(encodedRecordSubsets,classificationLabels,K, sampleType = 'Krandom'):
     '''Generate a staging pool of K sample from each class label
         subset.'''
     try:
@@ -249,7 +262,11 @@ def getStagingSamples(encodedRecordSubsets,classificationLabels,K):
             if encodedRecordSubsets.has_key(classLabel):
                 # get get 'K' top-scoring records from each class label subset
                 subset = encodedRecordSubsets[classLabel];
-                tmp    = getTopKScoringVectors(subset,K)
+                if sampleType == 'topK':
+                    tmp    = getTopKScoringVectors(subset,K);
+                # default k-random samples
+                else:
+                    tmp    = random_subset( subset, K );
                 stagingSample.append( tmp )
         # return a flattened list of records sampled from each class
         return [value for row in stagingSample for value in row];
@@ -288,6 +305,15 @@ if __name__ == '__main__':
                     ,default = 3
                     ,type=int
                     ,help="Total neighbors to sample.");
+    parser.add_argument('-s','--similarity'
+                    ,dest="similarity_func"
+                    ,default = 'euclidean'
+                    ,help="The similarity function used to compare a unlabeled examples to a labeled kth-neighbor [default=euclidean|manhatten|minkowski].");
+    parser.add_argument('-S','--sampleType'
+                    ,dest="sampleType"
+                    ,default = 'Krandom'
+                    ,help="The method to sample 'K' records from each label subset, top 'K' are records with the max combined term relevance score [default=Krandom|topK].");
+
     args = parser.parse_args();
     # check arguments, training set is required.
     if os.path.isfile( args.trainingSet ) is False:
@@ -299,6 +325,8 @@ if __name__ == '__main__':
         recordTuples                          = removeNumbersAndPunctuation(recordTuples);                               # Process record tuples
         classificationLabels                  = ['SMOKER','NON-SMOKER','UNKNOWN']                                          # classificiation labels
         uniqueTermsList                       = getUniqueTerms(recordTuples);                                            # get unique terms in problem space
+        similarityFunction                    = str.strip(args.similarity_func);
+        sampleType                            = str.strip(args.sampleType);
         
         ###Module
         termRankings = [];
@@ -335,7 +363,7 @@ if __name__ == '__main__':
         ###Module
         # For each document in the training set, compute similarity to 'K' nearest neighbors for each label
         K = args.kNeighbors
-        stagingCollection  = getStagingSamples(encodedRecordSubsets,classificationLabels,K)
+        stagingCollection  = getStagingSamples(encodedRecordSubsets,classificationLabels,K,sampleType)
         # compute similarity vectors for each class label for each record
         # for each document in the training set...
         recordClassificationStats = {};
@@ -353,7 +381,7 @@ if __name__ == '__main__':
                 # get this examples vector score for this neighbors SMOKING STATUS class label
                 recordTermFeatureVector                    = getRecordTermRankScoreVector(record,termRankings,kthNeighbor[1]);
                 # Calculate the similarity score
-                similarityScore = calculateVectorSimilarity(neighborTermFeatureVector, recordTermFeatureVector);
+                similarityScore = calculateVectorSimilarity(neighborTermFeatureVector, recordTermFeatureVector, similarityFunction);
                 recordClassificationStats[recordId]['distance'][kthNeighborId]     = similarityScore;
         
         ###Module
