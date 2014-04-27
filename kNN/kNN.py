@@ -197,7 +197,7 @@ def calcDiceCoeff(n_a,n_b,n_ab):
     except:
         print "error calculating DiceCoeff"
 
-def getTermRanksPerClass(uniqueTermsList , classificationLabels, documentTuples):
+def getTermRanksPerClass(uniqueTermsList , classificationLabels, documentTuples, associationFunction = 'chi-sq'):
     '''Construct a lookup of term rankings per class / label'''
     try:
         # schema
@@ -217,10 +217,8 @@ def getTermRanksPerClass(uniqueTermsList , classificationLabels, documentTuples)
                 intersectionSet  = list( set(termRecordSubset) & set(classLbelRecordSubset) )
                 # n_ab: num. of records containing term and label (n_ab)
                 n_ab             = len( intersectionSet )
-                # Compute Chi-square
-                result         = calcChiSquare(n_a,n_b,n_ab,len(documentTuples));
-                # Compute Dice's Coefficient
-                #result           = calcDiceCoeff(n_a,n_b,n_ab);
+                # Compute using Chi-square ( or Dice's Coefficient )
+                result         = calcChiSquare(n_a,n_b,n_ab,len(documentTuples)) if associationFunction == 'chi-sq' else calcDiceCoeff(n_a,n_b,n_ab);
                 if termRankingsPerClass.has_key(classLabel,):
                     termRankingsPerClass[classLabel].append( (term,result) );
                 else:
@@ -328,11 +326,22 @@ if __name__ == '__main__':
         'SMOKER','NON-SMOKER' or 'UNKNOWN' '''
     parser = argparse.ArgumentParser(prog="K-Nearest Neighbor Classifier"
                                      ,description='Trains a K-Nearest Neighbor classifier '\
-                                         'to label patients as SMOKING, NON-SMOKING or UNKNOWN based on available (scrubbed) medical record information.')
+                                         'to label patients as SMOKING, NON-SMOKING or \
+                                         UNKNOWN based on available (scrubbed) medical record information.')
     parser.add_argument('-t', '--trainingSet'
-                        ,help='The path to the labeled medical record training set file'
+                        ,help='Path to the labeled medical record training set \
+                        file, e.g. ./path/to/training.txt'
                         ,default=''
                         ,dest="trainingSet");
+    parser.add_argument('-r', '--termrankings'
+                        ,help='Path to term rankings pickle file, e.g. ./path/to/termRankings.p'
+                        ,default=''
+                        ,dest="termRankings");
+    parser.add_argument('-a', '--associationFunction'
+                        ,help='The association function used to compare the relevancy of a \
+                        term to a specific class label [default=chi-square|dice].'
+                        ,default='chi-sq'
+                        ,dest="assocFunc");
     parser.add_argument('-K','--kNeighbors'
                     ,dest="kNeighbors"
                     ,default = 3
@@ -341,15 +350,18 @@ if __name__ == '__main__':
     parser.add_argument('-s','--similarity'
                     ,dest="similarity_func"
                     ,default = 'euclidean'
-                    ,help="The similarity function used to compare a unlabeled examples to a labeled kth-neighbor [default=euclidean|manhatten|minkowski].");
+                    ,help="The similarity function used to compare a unlabeled examples \
+                    to a labeled kth-neighbor [default=euclidean|manhatten|minkowski].");
     parser.add_argument('-S','--sampleType'
                     ,dest="sampleType"
                     ,default = 'Krandom'
-                    ,help="The method to sample 'K' records from each label subset, top 'K' are records with the max combined term relevance score [default=Krandom|topK], this sample type doesn't apply when using the hamming distance similarity.");
+                    ,help="The method to sample 'K' records from each label subset, top 'K''\
+                    are records with the max combined term relevance score [default=Krandom|topK],'\
+                    this sample type doesn't apply when using the hamming distance similarity.");
 
     args = parser.parse_args();
     # check arguments, training set is required.
-    if os.path.isfile( args.trainingSet ) is False:
+    if os.path.isfile( args.trainingSet ) is False or os.path.isfile( args.termRankings ) is False:
         parser.print_help()
     else:
         ###Module
@@ -360,23 +372,24 @@ if __name__ == '__main__':
         uniqueTermsList                       = getUniqueTerms(recordTuples);                  # get unique terms in problem space
         similarityFunction                    = str.strip(args.similarity_func);
         sampleType                            = str.strip(args.sampleType);
-        preserveTerms                         = True if similarityFunction == 'hamming' else False; 
+        preserveTerms                         = True if similarityFunction == 'hamming' else False;
+        associationFunction                   = args.assocFunc;
         
         ###Module
         termRankings = [];
         # Check location of relevance labels (parameterize after testing)
-        if os.path.isfile("C:\\temp\\datasets\\traningSetRankings.p"):
+        if os.path.isfile(args.termRankings):
             # load term rankings to memory
-            termRankings = loadObject(r'C:\temp\datasets\traningSetRankings.p');
+            termRankings = loadObject(args.termRankings);
         else:
             # Get term rankings per class from training set
             # Need:
             # uniqueTermsList      - for reference
             # classificationLabels - for reference
             # documentTuples       - training set to rank
-            termRanksPerClass = getTermRanksPerClass(uniqueTermsList , classificationLabels, recordTuples);
+            termRanksPerClass = getTermRanksPerClass(uniqueTermsList , classificationLabels, recordTuples, associationFunction);
             # persist rankings for training
-            storeObject(termRanksPerClass,"C:\\temp\\datasets\\traningSetRankings.p");
+            storeObject(termRanksPerClass,args.termRankings);
 
         # Generate feature vector encoded record subsets for each class
         encodedRecordSubsets = getEncodedRecordsSubsetsForClassLabels(recordTuples,classificationLabels,termRankings, preserveTerms)
