@@ -1,8 +1,8 @@
 #-------------------------------------------------------------------------------
 # Name:        cs-578-project 3
 # Purpose:     Trains a Naive Bayes classifier to apply labels to scrubbed 
-# medical records identfying patients as either 'smoking', 'non-smoking', 
-# or 'unknown' class.
+# medical records identfying patients as being in the set of 'smoking', 
+# 'non-smoking', or 'unknown' smoking status classification.
 #   
 # Author:      kingrichard2005
 #
@@ -11,10 +11,13 @@
 # Licence:     MIT
 #-------------------------------------------------------------------------------
 import re
+from bs4 import BeautifulSoup
+import urllib2
 import math
 import operator
 import os
 import argparse
+import string
 
 def getTotalNumTermsInTrainingDocPerClass(documentTuples,classificationLabels):
     '''Gets the total # of terms that occur in training documents with class label c'''
@@ -65,30 +68,35 @@ def getTrainingSetTuples(trainingSet):
     """"Each training example is represented as a 
         3-tuple with the following schema: 
         ( {Record ID}, {Training Label}, {Feature Term String - used for feature vector extraction} )."""
-    recordIdTupleList = [];
-    with open(trainingSet, 'r') as content_file:
-        # Read records into list
-        content    = content_file.read()
-        content    = content.split("\n")
-        content    = [m for m in content]
-        tmpStr     = ''
-        tmpStrList = []
-        for m in content:
-            if m == '<ROOT>':
-                continue;
-            elif m == '':
-                tmpStrList.append(tmpStr);
-                tmpStr = ''
-            else:
-                tmpStr += ' {0}'.format(m);
+    try:
+        recordIdTupleList = [];
+        with open(trainingSet, 'r') as content_file:
+            # Read records into list
+            content    = content_file.read()
+            content = content.replace("<ROOT>\n","");
+            content = content.replace("</ROOT>\n","");
+            content    = content.split("\n")
+            content    = [m for m in content]
+            tmpStr     = ''
+            tmpStrList = []
+            for m in content:
+                if m == '':
+                    tmpStrList.append(tmpStr);
+                    tmpStr = ''
+                else:
+                    tmpStr += ' {0}'.format(m);
 
-        # Extract tuples from parsed records
-        pattern   = re.compile(R'<RECORD\sID="(\d*)">\s*<SMOKING\sSTATUS="(\S*)"></SMOKING>\s*<TEXT>\s*([^<>]+)\s*</TEXT>');
-        recordIdTupleList = []
-        for str in tmpStrList:
-            recordIdTupleList.append([m for m in pattern.findall(str)]);
-        recordIdTupleList = [t for t in recordIdTupleList if len(t) != 0];
-    return recordIdTupleList;
+            # Extract tuples from parsed records
+            pattern   = re.compile(R'<RECORD\sID="(\d*)">\s*<SMOKING\sSTATUS="(.*)"></SMOKING>\s*<TEXT>\s*([^<>]+)\s*</TEXT>\s*(?:</RECORD>)');
+            recordIdTupleList = [];
+            #with open(R"C:\temp\datasets\knnDiagnosticsParsedRecords.txt", "a") as diag_file:
+            for str in tmpStrList:
+                #diag_file.writelines(str);
+                recordIdTupleList.append([m for m in pattern.findall(str)]);
+            recordIdTupleList = [t for t in recordIdTupleList if len(t) != 0];
+        return recordIdTupleList;
+    except:
+        print "error getting record tuples from training set file {0}".format(str(trainingSet));
 
 def computeLabelPrediction( w,c,termClassOccurrenceLookup,totalTermsInTrainingDocPerClass,recordTermFeatureVector, mu = 0.75, useBayesianSmoothing = False ):
     ''' Computes the probability that term 'w' belongs to classl 'c' '''
@@ -107,6 +115,23 @@ def computeLabelPrediction( w,c,termClassOccurrenceLookup,totalTermsInTrainingDo
         # Dirichlet smoothing estimate
         P_wc      = ( tf + ( mu * ( cfw / C ) ) ) / ( _c + mu );
     return P_wc;
+
+def scrapeNsciaTerms(pattern):
+    '''Read and parse medical terms from the National Spinal Cord Injury Association (NSCIA) Encyclopedia
+        http://www.spinalcord.org/resource-center/askus/index.php?pg=kb.page&id=1413'''
+    urlResp          = urllib2.urlopen(r"http://www.spinalcord.org/resource-center/askus/index.php?pg=kb.page&id=1413");
+    content          = urlResp.read();
+    soup             = BeautifulSoup(content)
+    NsciaTermsDict   = []
+    for paragraph in soup.find_all("p"):
+        termTupleMatch = re.findall(R'(<em>([^<>]*)</em></strong></span>([^<>]*)<br/>)',str(paragraph));
+        if len(termTupleMatch) > 0:
+            for match in termTupleMatch:
+                # remove non-printable char
+                # TODO: update regex pattern to ignore these so this is not necessary
+                cleanString = match[2].replace('\xc2\x96','').strip()
+                NsciaTermsDict.append( (match[1],cleanString) );
+    return NsciaTermsDict;
 
 if __name__ == '__main__':
     '''Train a Naive Bayes Classifier to classify 
@@ -134,8 +159,8 @@ if __name__ == '__main__':
     else:
         ####
         # Collect required components
-        documentTuples                        = getTrainingSetTuples(args.trainingSet);
         classificationLabels                  = ['SMOKER','NON-SMOKER','UNKNOWN']                                          # classificiation labels
+        documentTuples                        = getTrainingSetTuples(args.trainingSet);
         documentTuples                        = removeNumbersAndPunctuation(documentTuples);                               # Process record tuples
         uniqueTermsList                       = getUniqueTerms(documentTuples);                                            # get unique terms in problem space
         termClassOccurrenceLookup             = getTermClassOccurenceLookup(documentTuples,uniqueTermsList);               # get Tf_wc
@@ -146,7 +171,7 @@ if __name__ == '__main__':
                                                 , 'NON-SMOKER': len([x for x in documentTuples if x[1] == 'NON-SMOKER' ])
                                                 , 'UNKNOWN'   : len([x for x in documentTuples if x[1] == 'UNKNOWN']) 
                                                 }
-        # proportion 'P(c)' lookup of training instances with label 'c'
+        # proportion 'P(c)' lookup of training instances with class label 'c'
         proportionLookup = {
                              'SMOKER'    : float(counts['SMOKER'])     / float(totalNtrainingInstances)
                             ,'NON-SMOKER': float(counts['NON-SMOKER']) / float(totalNtrainingInstances)
