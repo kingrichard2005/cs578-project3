@@ -18,6 +18,15 @@ import argparse
 import random
 import cPickle as pickle
 
+def hamdist(str1, str2):
+    '''Count the # of differences between equal length 
+    strings str1 and str2, borrowed from http://code.activestate.com/recipes/499304-hamming-distance/'''
+    diffs = 0
+    for ch1, ch2 in zip(str1, str2):
+        if ch1 != ch2:
+            diffs += 1
+    return diffs;
+
 def random_subset( sampleList, K ):
     '''(REVIEW) Implementation of resevoir sampling in Python borrowed from
         http://propersubset.com/2010/04/choosing-random-elements.html'''
@@ -82,23 +91,25 @@ def getTrainingSetTuples(trainingSet):
         with open(trainingSet, 'r') as content_file:
             # Read records into list
             content    = content_file.read()
+            content = content.replace("<ROOT>\n","");
+            content = content.replace("</ROOT>\n","");
             content    = content.split("\n")
             content    = [m for m in content]
             tmpStr     = ''
             tmpStrList = []
             for m in content:
-                if m == '<ROOT>':
-                    continue;
-                elif m == '':
+                if m == '':
                     tmpStrList.append(tmpStr);
                     tmpStr = ''
                 else:
                     tmpStr += ' {0}'.format(m);
 
             # Extract tuples from parsed records
-            pattern   = re.compile(R'<RECORD\sID="(\d*)">\s*<SMOKING\sSTATUS="(\S*)"></SMOKING>\s*<TEXT>\s*([^<>]+)\s*</TEXT>');
-            recordIdTupleList = []
+            pattern   = re.compile(R'<RECORD\sID="(\d*)">\s*<SMOKING\sSTATUS="(.*)"></SMOKING>\s*<TEXT>\s*([^<>]+)\s*</TEXT>\s*(?:</RECORD>)');
+            recordIdTupleList = [];
+            #with open(R"C:\temp\datasets\knnDiagnosticsParsedRecords.txt", "a") as diag_file:
             for str in tmpStrList:
+                #diag_file.writelines(str);
                 recordIdTupleList.append([m for m in pattern.findall(str)]);
             recordIdTupleList = [t for t in recordIdTupleList if len(t) != 0];
         return recordIdTupleList;
@@ -144,6 +155,28 @@ def calculateVectorSimilarity(x, y, similarity_func = 'euclidean'):
         return round(similarityDistance,4);
     except:
         print "error calculating similarity score"
+
+def calcFeatureHammingDistance(a, b):
+    '''Calculate the Hamming distnace of the binary representation of term string elements 
+        from equal length vectors.  The longer vector is trimmed to the length of the shorter vector.'''
+    try:
+        FeatureHammingDistance = 0.0;
+        commonTerms = list(set(a) & set(b));
+        for x, y in zip(a, b):
+            # terms as a list of binary encoded strings
+            list1 = ' '.join(format(ord(xF), 'b') for xF in x).split(' ')
+            list2 = ' '.join(format(ord(yF), 'b') for yF in y).split(' ')
+            # match list lengths by setting lists equal to shortest list
+            # NOTE:  Review since we are essentially trimming extra terms
+            # from the record with the larrger term feature vector
+            list1 = list1[0:len(list2)] if ( len(list2) < len(list1) ) else list1
+            list2 = list2[0:len(list1)] if ( len(list1) < len(list2) ) else list2
+            for subx, suby in zip(list1, list2):
+                FeatureHammingDistance += hamdist(subx, suby)
+
+        return FeatureHammingDistance;
+    except:
+        print "Error calculating hamming distance for unlabeled example and kth-neighbor "
 
 def calcChiSquare(n_a,n_b,n_ab,N):
     '''Calculates the Chi-Square and returns the float value rounded to 4 decimal places
@@ -217,7 +250,7 @@ def getRecordTermRankScoreVector(record,termRankReference,classLabel):
     except:
         print "error getting record score"
         
-def getEncodedRecordsSubsetsForClassLabels(recordTuples,classificationLabels,termRankings):
+def getEncodedRecordsSubsetsForClassLabels(recordTuples,classificationLabels,termRankings,preserveTerms = False):
     '''Generate record tuple subsets per classification label 
         with term feature vectors encoded with corresponding term rank scores'''
     try:
@@ -227,8 +260,8 @@ def getEncodedRecordsSubsetsForClassLabels(recordTuples,classificationLabels,ter
             labelRecordSubSets[classLabel] = [];
             classLbelRecordSubset          = [t for t in recordTuples if t[1] == classLabel];
             for record in classLbelRecordSubset:
-                featureVectorScore = getRecordTermRankScoreVector(record,termRankings,classLabel)
-                encodedRecord      = (record[0],record[1],featureVectorScore)
+                featureVectorScore =  [] if preserveTerms else getRecordTermRankScoreVector(record,termRankings,classLabel);
+                encodedRecord      = (record[0],record[1], record[2] if preserveTerms else featureVectorScore )
                 labelRecordSubSets[classLabel].append(encodedRecord)
         return labelRecordSubSets;
     except:
@@ -253,7 +286,7 @@ def getTopKScoringVectors(collection,K):
     except:
         print "error getting top K vectors"
 
-def getStagingSamples(encodedRecordSubsets,classificationLabels,K, sampleType = 'Krandom'):
+def getStagingSamples(encodedRecordSubsets,classificationLabels,K, sampleType = 'Krandom', preserveTerms = False):
     '''Generate a staging pool of K sample from each class label
         subset.'''
     try:
@@ -262,7 +295,7 @@ def getStagingSamples(encodedRecordSubsets,classificationLabels,K, sampleType = 
             if encodedRecordSubsets.has_key(classLabel):
                 # get get 'K' top-scoring records from each class label subset
                 subset = encodedRecordSubsets[classLabel];
-                if sampleType == 'topK':
+                if sampleType == 'topK' and preserveTerms == False:
                     tmp    = getTopKScoringVectors(subset,K);
                 # default k-random samples
                 else:
@@ -312,7 +345,7 @@ if __name__ == '__main__':
     parser.add_argument('-S','--sampleType'
                     ,dest="sampleType"
                     ,default = 'Krandom'
-                    ,help="The method to sample 'K' records from each label subset, top 'K' are records with the max combined term relevance score [default=Krandom|topK].");
+                    ,help="The method to sample 'K' records from each label subset, top 'K' are records with the max combined term relevance score [default=Krandom|topK], this sample type doesn't apply when using the hamming distance similarity.");
 
     args = parser.parse_args();
     # check arguments, training set is required.
@@ -322,11 +355,12 @@ if __name__ == '__main__':
         ###Module
         # Collect required components
         recordTuples                          = getTrainingSetTuples(args.trainingSet);
-        recordTuples                          = removeNumbersAndPunctuation(recordTuples);                               # Process record tuples
-        classificationLabels                  = ['SMOKER','NON-SMOKER','UNKNOWN']                                          # classificiation labels
-        uniqueTermsList                       = getUniqueTerms(recordTuples);                                            # get unique terms in problem space
+        recordTuples                          = removeNumbersAndPunctuation(recordTuples);     # Process record tuples
+        classificationLabels                  = ['SMOKER','NON-SMOKER','UNKNOWN']# classificiation labels
+        uniqueTermsList                       = getUniqueTerms(recordTuples);                  # get unique terms in problem space
         similarityFunction                    = str.strip(args.similarity_func);
         sampleType                            = str.strip(args.sampleType);
+        preserveTerms                         = True if similarityFunction == 'hamming' else False; 
         
         ###Module
         termRankings = [];
@@ -345,7 +379,7 @@ if __name__ == '__main__':
             storeObject(termRanksPerClass,"C:\\temp\\datasets\\traningSetRankings.p");
 
         # Generate feature vector encoded record subsets for each class
-        encodedRecordSubsets = getEncodedRecordsSubsetsForClassLabels(recordTuples,classificationLabels,termRankings)
+        encodedRecordSubsets = getEncodedRecordsSubsetsForClassLabels(recordTuples,classificationLabels,termRankings, preserveTerms)
 
         # get C = |c| = total number of terms that occur in training documents with class label 'c'
         totalTermsInTrainingDocPerClass       =  getTotalNumTermsInTrainingDocPerClass(recordTuples,classificationLabels)# Get total 'N'
@@ -363,7 +397,7 @@ if __name__ == '__main__':
         ###Module
         # For each document in the training set, compute similarity to 'K' nearest neighbors for each label
         K = args.kNeighbors
-        stagingCollection  = getStagingSamples(encodedRecordSubsets,classificationLabels,K,sampleType)
+        stagingCollection  = getStagingSamples(encodedRecordSubsets,classificationLabels,K,sampleType, preserveTerms)
         # compute similarity vectors for each class label for each record
         # for each document in the training set...
         recordClassificationStats = {};
@@ -378,10 +412,10 @@ if __name__ == '__main__':
             for kthNeighbor in sample:
                 kthNeighborId                              = kthNeighbor[0];
                 neighborTermFeatureVector                  = kthNeighbor[2];
-                # get this examples vector score for this neighbors SMOKING STATUS class label
-                recordTermFeatureVector                    = getRecordTermRankScoreVector(record,termRankings,kthNeighbor[1]);
+                # get this examples vector score if we're not calculating hamming distance
+                recordTermFeatureVector                    = recordTermFeatureVector if preserveTerms else getRecordTermRankScoreVector(record,termRankings,kthNeighbor[1]);
                 # Calculate the similarity score
-                similarityScore = calculateVectorSimilarity(neighborTermFeatureVector, recordTermFeatureVector, similarityFunction);
+                similarityScore = calcFeatureHammingDistance(neighborTermFeatureVector, recordTermFeatureVector) if similarityFunction == 'hamming' else calculateVectorSimilarity(neighborTermFeatureVector, recordTermFeatureVector, similarityFunction);
                 recordClassificationStats[recordId]['distance'][kthNeighborId]     = similarityScore;
         
         ###Module
