@@ -33,20 +33,27 @@ def getTotalNumTermsInTrainingDocPerClass(documentTuples,classificationLabels):
 
     return returnReference;
 
-def getTermClassOccurenceLookup(documentTuples,uniqueTermsList):
+def getTermClassOccurenceLookup(documentTuples,uniqueTermsList, classificationLabels):
     '''Gets the number of times the a term occurs in class 'c' of each document'''
-    termClassOccurenceLookup = {};
-    for t in documentTuples:
-        # get content as list
-        contentTermList = t[2].split(' ');
-        # intersect to get unique terms in this document
-        uqTermsInDocument = list(set(contentTermList) & set(uniqueTermsList));
-        for uq in uqTermsInDocument:
-            if termClassOccurenceLookup.has_key(uq) is False:
-                termClassOccurenceLookup[uq]= {'SMOKER':0,'NON-SMOKER':0,'UNKNOWN':0};
-            count = (t[1],1)
-            termClassOccurenceLookup[uq][count[0]] += 1;
-    return termClassOccurenceLookup;
+    try:
+        termClassOccurenceLookup = {};
+        for t in documentTuples:
+            # get content as list
+            contentTermList = t[2].split(' ');
+            # intersect to get unique terms in this document
+            uqTermsInDocument = list(set(contentTermList) & set(uniqueTermsList));
+            for uq in uqTermsInDocument:
+                smokingStatusIdTuple = (t[1],1)
+                if termClassOccurenceLookup.has_key(uq) is False:
+                    termClassOccurenceLookup[uq] = {};
+                    for classLabel in classificationLabels:
+                        termClassOccurenceLookup[uq][classLabel]= 0;
+
+                if smokingStatusIdTuple[0] in classificationLabels:
+                    termClassOccurenceLookup[uq][smokingStatusIdTuple[0]] += 1;
+        return termClassOccurenceLookup;
+    except:
+        print "Error geting term class occurrence lookup"
 
 def getUniqueTerms(documentTuples):
     uniqueTermList = []
@@ -159,11 +166,11 @@ if __name__ == '__main__':
     else:
         ####
         # Collect required components
-        classificationLabels                  = ['SMOKER','NON-SMOKER','UNKNOWN']                                          # classificiation labels
+        classificationLabels                  = ['SMOKER','NON-SMOKER','UNKNOWN']                                                                # classificiation labels
         documentTuples                        = getTrainingSetTuples(args.trainingSet);
-        documentTuples                        = removeNumbersAndPunctuation(documentTuples);                               # Process record tuples
-        uniqueTermsList                       = getUniqueTerms(documentTuples);                                            # get unique terms in problem space
-        termClassOccurrenceLookup             = getTermClassOccurenceLookup(documentTuples,uniqueTermsList);               # get Tf_wc
+        documentTuples                        = removeNumbersAndPunctuation(documentTuples);                                                     # Process record tuples
+        uniqueTermsList                       = getUniqueTerms(documentTuples);                                                                  # get unique terms in problem space
+        termClassOccurrenceLookup             = getTermClassOccurenceLookup(documentTuples,uniqueTermsList, classificationLabels);               # get Tf_wc
         # get C = |c| = total number of terms that occur in training documents with class label 'c'
         totalTermsInTrainingDocPerClass       =  getTotalNumTermsInTrainingDocPerClass(documentTuples,classificationLabels)# Get total 'N'
         totalNtrainingInstances               = len(documentTuples);
