@@ -46,23 +46,6 @@ def random_subset( sampleList, K ):
     except:
         print "error sampling random subset from record tuple collection"
 
-def getTotalNumTermsInTrainingDocPerClass(documentTuples,classificationLabels):
-    '''Gets the total # of terms that occur in training documents with class label c'''
-    try:
-        documentsWithClassLabelC = {};
-        returnReference = {}
-        # Can be parallelized by class label
-        for c in classificationLabels:
-            documentsWithClassLabelC[c] = [dt[2] for dt in documentTuples if str(dt[1]) == str(c)];
-
-        # accumulate all terms per class
-        for label,terms in documentsWithClassLabelC.iteritems():
-            returnReference[label] = len([i[0] for i in [term.split(' ') for term in terms] ]);
-
-        return returnReference;
-    except:
-        print "error getting TotalNumTermsInTrainingDocPerClass"
-
 def getUniqueTerms(documentTuples):
     uniqueTermList = []
     for x in documentTuples:
@@ -145,7 +128,7 @@ def calculateVectorSimilarity(x, y, similarity_func = 'euclidean'):
             for a in xrange(0,sumAcc):
                 similarityDistance += float( abs(localX[a]-localY[a]) );
             similarityDistance = math.sqrt(similarityDistance);
-        # detault to Euclidean distance measure
+        # default to Euclidean distance measure
         else:
             for a in xrange(0,sumAcc):
                 similarityDistance += float( (localX[a]-localY[a])**2 );
@@ -157,7 +140,7 @@ def calculateVectorSimilarity(x, y, similarity_func = 'euclidean'):
         print "error calculating similarity score"
 
 def calcFeatureHammingDistance(a, b):
-    '''Calculate the Hamming distnace of the binary representation of term string elements 
+    '''Calculate the Hamming distance of the binary representation of term string elements 
         from equal length vectors.  The longer vector is trimmed to the length of the shorter vector.'''
     try:
         FeatureHammingDistance = 0.0;
@@ -168,7 +151,7 @@ def calcFeatureHammingDistance(a, b):
             list2 = ' '.join(format(ord(yF), 'b') for yF in y).split(' ')
             # match list lengths by setting lists equal to shortest list
             # NOTE:  Review since we are essentially trimming extra terms
-            # from the record with the larrger term feature vector
+            # from the record with the larger term feature vector
             list1 = list1[0:len(list2)] if ( len(list2) < len(list1) ) else list1
             list2 = list2[0:len(list1)] if ( len(list1) < len(list2) ) else list2
             for subx, suby in zip(list1, list2):
@@ -320,6 +303,39 @@ def loadObject(path):
     finally:
         return instanceCopy;
 
+def listToChunks(list , N):
+    '''Use a Python generator to split a list
+        to N size chunks.'''
+    try:
+        for i in xrange(0, len(list), N):
+            # Similar to 'take', on each successive
+            # iteration will 'yield' as much of the list
+            # up to 'N' for len(list) > N length, else when 
+            # len(list) < N, just return remaining list elements.
+            yield list[i:i+N];
+    except:
+        print "Error splitting list into {0} chunks".format(str(N));
+
+def getClusterPrecision(recordTuples, classificationLabels, K):
+    '''Calculate the cluster precision for K clusters derived
+        from the input training record set. 
+        ( see Search Engines: Information Retrieval in Practice 9.2.3 )'''
+    try:
+        # Split the record set into 'K' clusters
+        kChunk             = (len(recordTuples) / K) + 1;
+        kClusters          = list( listToChunks(recordTuples, kChunk) );
+        # sum the max values
+        sumMax  = 0;
+        for classLabel in classificationLabels:
+            labelCountAcc = [];
+            for cluster in kClusters:
+                labelCountAcc.append(len([ e for e in cluster if e[1] == classLabel ]));
+            sumMax  += max( labelCountAcc );
+
+        return round(float(sumMax) / float(K),4);
+    except:
+        print "error getting cluster precision"
+
 if __name__ == '__main__':
     '''Train a Naive Bayes Classifier to classify 
         a set of (scrubbed) medical records with the label(s) 
@@ -365,6 +381,7 @@ if __name__ == '__main__':
         parser.print_help()
     else:
         ###Module
+
         # Collect required components
         recordTuples                          = getTrainingSetTuples(args.trainingSet);
         recordTuples                          = removeNumbersAndPunctuation(recordTuples);     # Process record tuples
@@ -390,23 +407,10 @@ if __name__ == '__main__':
             termRanksPerClass = getTermRanksPerClass(uniqueTermsList , classificationLabels, recordTuples, associationFunction);
             # persist rankings for training
             storeObject(termRanksPerClass,args.termRankings);
-
+        
         # Generate feature vector encoded record subsets for each class
         encodedRecordSubsets = getEncodedRecordsSubsetsForClassLabels(recordTuples,classificationLabels,termRankings, preserveTerms)
 
-        # get C = |c| = total number of terms that occur in training documents with class label 'c'
-        totalTermsInTrainingDocPerClass       =  getTotalNumTermsInTrainingDocPerClass(recordTuples,classificationLabels)# Get total 'N'
-        totalNtrainingInstances               = len(recordTuples);
-        counts                                = { 'SMOKER'    : len([x for x in recordTuples if x[1] == 'SMOKER'])
-                                                , 'NON-SMOKER': len([x for x in recordTuples if x[1] == 'NON-SMOKER' ])
-                                                , 'UNKNOWN'   : len([x for x in recordTuples if x[1] == 'UNKNOWN']) 
-                                                }
-        # proportion 'P(c)' lookup of training instances with label 'c'
-        proportionLookup = {
-                             'SMOKER'    : float(counts['SMOKER'])     / float(totalNtrainingInstances)
-                            ,'NON-SMOKER': float(counts['NON-SMOKER']) / float(totalNtrainingInstances)
-                            ,'UNKNOWN'   : float(counts['UNKNOWN'])    / float(totalNtrainingInstances)
-                            };
         ###Module
         # For each document in the training set, compute similarity to 'K' nearest neighbors for each label
         K = args.kNeighbors
@@ -440,7 +444,7 @@ if __name__ == '__main__':
             # the example's predicted class.
             distanceFromNeighbor      = vector[1]['distance']
             maxProb                   = min(distanceFromNeighbor.iteritems(), key=operator.itemgetter(1))[0]
-            predictedLabel = '';
+            predictedLabel            = '';
             for doc in recordTuples:
                 if doc[0] == maxProb:
                     predictedLabel = doc[1];
