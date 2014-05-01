@@ -407,7 +407,8 @@ if __name__ == '__main__':
             termRanksPerClass = getTermRanksPerClass(uniqueTermsList , classificationLabels, recordTuples, associationFunction);
             # persist rankings for training
             storeObject(termRanksPerClass,args.termRankings);
-        
+
+        print "Cluster precision with '{0}'-neighbors estimated at {1}%".format(args.kNeighbors,str(getClusterPrecision(recordTuples, classificationLabels, args.kNeighbors)))        
         # Generate feature vector encoded record subsets for each class
         encodedRecordSubsets = getEncodedRecordsSubsetsForClassLabels(recordTuples,classificationLabels,termRankings, preserveTerms)
 
