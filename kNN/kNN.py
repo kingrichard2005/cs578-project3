@@ -332,7 +332,7 @@ def getClusterPrecision(recordTuples, classificationLabels, K):
                 labelCountAcc.append(len([ e for e in cluster if e[1] == classLabel ]));
             sumMax  += max( labelCountAcc );
 
-        return round( abs(sumMax) / float(K),3);
+        return round( float(abs(sumMax) / float(len(recordTuples) )) * 100,3);
     except:
         print "error getting cluster precision"
 
