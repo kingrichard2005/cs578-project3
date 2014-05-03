@@ -11,6 +11,7 @@
 # Licence:     MIT
 #-------------------------------------------------------------------------------
 import re
+import time
 import math
 import operator
 import os
@@ -44,7 +45,7 @@ def random_subset( sampleList, K ):
 
         return result
     except:
-        print "error sampling random subset from record tuple collection"
+        print "error sampling random subset from record tuple collection\n"
 
 def getUniqueTerms(documentTuples):
     uniqueTermList = []
@@ -63,7 +64,7 @@ def removeNumbersAndPunctuation(documentTuples):
 
         return localDocumentTuples;
     except:
-        print "error removing numbers and punctuation"
+        print "error removing numbers and punctuation\n"
 
 def getTrainingSetTuples(trainingSet):
     """"Each training example is represented as a 
@@ -97,7 +98,7 @@ def getTrainingSetTuples(trainingSet):
             recordIdTupleList = [t for t in recordIdTupleList if len(t) != 0];
         return recordIdTupleList;
     except:
-        print "error getting record tuples from training set file {0}".format(str(trainingSet));
+        print "error getting record tuples from training set file {0}\n".format(str(trainingSet));
 
 def calculateVectorSimilarity(x, y, similarity_func = 'euclidean'):
     '''Calculate the similarity between two vectors using the Euclidean Distance function.'''
@@ -137,7 +138,7 @@ def calculateVectorSimilarity(x, y, similarity_func = 'euclidean'):
         # return distance measure rounded to 4 decimal places
         return round(similarityDistance,4);
     except:
-        print "error calculating similarity score"
+        print "error calculating similarity score\n"
 
 def calcFeatureHammingDistance(a, b):
     '''Calculate the Hamming distance of the binary representation of term string elements 
@@ -159,7 +160,7 @@ def calcFeatureHammingDistance(a, b):
 
         return FeatureHammingDistance;
     except:
-        print "Error calculating hamming distance for unlabeled example and kth-neighbor "
+        print "Error calculating hamming distance for unlabeled example and kth-neighbor\n"
 
 def calcChiSquare(n_a,n_b,n_ab,N):
     '''Calculates the Chi-Square and returns the float value rounded to 4 decimal places
@@ -168,7 +169,7 @@ def calcChiSquare(n_a,n_b,n_ab,N):
         result = float( (n_ab - (float(1/N) * n_a * n_b)  )**2 )  / (n_a * n_b);
         return round(result,4)
     except:
-        print "error calculating chiSquare"
+        print "error calculating chiSquare\n"
 
 def calcDiceCoeff(n_a,n_b,n_ab):
     '''Calculates the Dice coefficient and returns the float value rounded to 4 decimal places
@@ -178,7 +179,7 @@ def calcDiceCoeff(n_a,n_b,n_ab):
         result = float( n_ab )  / float( n_a + n_b )
         return round(result,4)
     except:
-        print "error calculating DiceCoeff"
+        print "error calculating DiceCoeff\n"
 
 def getTermRanksPerClass(uniqueTermsList , classificationLabels, documentTuples, associationFunction = 'chi-sq'):
     '''Construct a lookup of term rankings per class / label'''
@@ -214,7 +215,7 @@ def getTermRanksPerClass(uniqueTermsList , classificationLabels, documentTuples,
             termRankingsPerClass[key] = sorted(tmpList, key=operator.itemgetter(1),reverse=True);
         return termRankingsPerClass;
     except:
-        print 'error getting TermRanksPerClass'
+        print 'error getting TermRanksPerClass\n'
 
 def getRecordTermRankScoreVector(record,termRankReference,classLabel):
     try:
@@ -229,7 +230,7 @@ def getRecordTermRankScoreVector(record,termRankReference,classLabel):
                 recordScoreVector.append(tmpLookup[term]);
         return recordScoreVector;
     except:
-        print "error getting record score"
+        print "error getting record score\n"
         
 def getEncodedRecordsSubsetsForClassLabels(recordTuples,classificationLabels,termRankings,preserveTerms = False):
     '''Generate record tuple subsets per classification label 
@@ -244,9 +245,15 @@ def getEncodedRecordsSubsetsForClassLabels(recordTuples,classificationLabels,ter
                 featureVectorScore =  [] if preserveTerms else getRecordTermRankScoreVector(record,termRankings,classLabel);
                 encodedRecord      = (record[0],record[1], record[2] if preserveTerms else featureVectorScore )
                 labelRecordSubSets[classLabel].append(encodedRecord)
+
+        # trim each label subset to normalize each to the length of the shortest subset
+        shortest = min([len(e) for e in labelRecordSubSets.itervalues()]);
+        for k,v in labelRecordSubSets.iteritems():
+            labelRecordSubSets[k] = v[:shortest]
+
         return labelRecordSubSets;
     except:
-        print "error generating encoded record subsets for class labels"
+        print "error generating encoded record subsets for class labels\n"
 
 def getTopKScoringVectors(collection,K):
     '''Get top K scoring records from collection'''
@@ -265,7 +272,7 @@ def getTopKScoringVectors(collection,K):
                     topKRecords.append(record);
         return topKRecords;
     except:
-        print "error getting top K vectors"
+        print "error getting top K vectors\n"
 
 def getStagingSamples(encodedRecordSubsets,classificationLabels,K, sampleType = 'Krandom', preserveTerms = False):
     '''Generate a staging pool of K sample from each class label
@@ -285,13 +292,13 @@ def getStagingSamples(encodedRecordSubsets,classificationLabels,K, sampleType = 
         # return a flattened list of records sampled from each class
         return [value for row in stagingSample for value in row];
     except:
-        print "error getting staging sample"
+        print "error getting staging sample\n"
     
 def storeObject(objectToPersist,path):
     try:
         pickle.dump( objectToPersist, open( path, "wb" ) )
     except:
-        print "error storing object file to disk"
+        print "error storing object file to disk\n"
     finally:
         return;
 
@@ -299,7 +306,7 @@ def loadObject(path):
     try:
         instanceCopy = pickle.load( open(path,"rb") );
     except:
-        print "error retrieving object file from disk"
+        print "error retrieving object file from disk\n"
     finally:
         return instanceCopy;
 
@@ -314,7 +321,7 @@ def listToChunks(list , N):
             # len(list) < N, just return remaining list elements.
             yield list[i:i+N];
     except:
-        print "Error splitting list into {0} chunks".format(str(N));
+        print "Error splitting list into {0} chunks\n".format(str(N));
 
 def getClusterPrecision(recordTuples, classificationLabels, K):
     '''Calculate the cluster precision for K clusters derived
@@ -334,7 +341,7 @@ def getClusterPrecision(recordTuples, classificationLabels, K):
 
         return round( float(abs(sumMax) / float(len(recordTuples) )) * 100,3);
     except:
-        print "error getting cluster precision"
+        print "error getting cluster precision\n"
 
 if __name__ == '__main__':
     '''Train a Naive Bayes Classifier to classify 
@@ -408,17 +415,23 @@ if __name__ == '__main__':
             # persist rankings for training
             storeObject(termRanksPerClass,args.termRankings);
 
-        print "Cluster precision with '{0}'-neighbors estimated at {1}%".format(args.kNeighbors,str(getClusterPrecision(recordTuples, classificationLabels, args.kNeighbors)))        
+        print "Cluster precision with '{0}'-neighbors estimated at {1}%\n".format(args.kNeighbors,str(getClusterPrecision(recordTuples, classificationLabels, args.kNeighbors)))        
         # Generate feature vector encoded record subsets for each class
         encodedRecordSubsets = getEncodedRecordsSubsetsForClassLabels(recordTuples,classificationLabels,termRankings, preserveTerms)
+        for k,v in encodedRecordSubsets.iteritems():
+            print "'{0}' label subset contains '{1}' records.".format(k,str(len(v)))
 
         ###Module
         # For each document in the training set, compute similarity to 'K' nearest neighbors for each label
         K = args.kNeighbors
+        print "\nUsing '{0}' sample type to extract '{1}'-neighbors from each label subset pool\n".format( sampleType, str(K) )
         stagingCollection  = getStagingSamples(encodedRecordSubsets,classificationLabels,K,sampleType, preserveTerms)
         # compute similarity vectors for each class label for each record
         # for each document in the training set...
         recordClassificationStats = {};
+        print "Training '{0}' unlabeled examples using a sample of '{1}', '{2}' records from each label subset pool\n".format(str(len(recordTuples)), str(K),sampleType)
+        print "Using the '{0}' distance function as a similarity measure...\n".format(similarityFunction)
+        t0 = time.time()
         for record in recordTuples:
             recordId                                 = record[0]
             recordLabel                              = record[1]
@@ -452,7 +465,7 @@ if __name__ == '__main__':
                     break;
             finalLabels[vector[0]]    = [predictedLabel,vector[1]['actual_label']];
 
-        print "'{0}' records classified".format(len(finalLabels))
+        print "...'{0}' records classified\n".format(len(finalLabels))
         actualLbls        = [];
         predictedLbls     = [];
         longestClassLabel = max(len(s) for s in classificationLabels)
@@ -463,4 +476,4 @@ if __name__ == '__main__':
             if output[1][0] == output[1][1]:
                 predictedLbls.append( output[1][0] );
             print "Record Id: '{0:03}' Classified as '{1}'{2},Actual Classification: '{3}'".format( int(output[0]) ,output[1][0], spacePad,output[1][1]);
-        print "Correctly classified: '{0}' of '{1}' records".format( len(predictedLbls),len(actualLbls) );
+        print "\nCorrectly classified: '{0}' of '{1}' records in {2} seconds".format( len(predictedLbls),len(actualLbls),str( round(time.time() - t0,4) ) );
