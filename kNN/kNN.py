@@ -273,7 +273,7 @@ def computePredictionScoresForUnlabeledRecordsExtension(record, stagingCollectio
             # get k-random neighbors
             top_n_KNN = random_subset( stagingCollection, K )
 
-            # First PAss - Calculate similarity score across each class label
+            # Calculate similarity score across each class label
             # the max score is the actual label for this record
             labelScores = []
             for label in classificationLabels:
@@ -295,7 +295,7 @@ def computePredictionScoresForUnlabeledRecordsExtension(record, stagingCollectio
                     otherKNeighborTermFeatureVector                                                  = otherKNeighbor[2];
                     kthNeighborPredicitonScore[kthNeighborId]                                        = {'distance':{} , 'actual_label':otherKNeighborLabel, 'predicted_label':otherKNeighborLabel};
                     # We don't calculate the hamming distance since neighbors are already encoded
-                    # Calculate the similarity score, unlabeled record vs lebeled neighbor
+                    # Calculate the similarity score, unlabeled record vs labeled neighbor
                     kToNScore                                                                   = calcFeatureHammingDistance(neighborTermFeatureVector, otherKNeighborTermFeatureVector) if similarityFunction == 'hamming' else calculateVectorSimilarity(neighborTermFeatureVector, otherKNeighborTermFeatureVector, similarityFunction);
                     kthNeighborPredicitonScore[kthNeighborId]['distance'][otherKNeighborId]     = kToNScore;
                             
@@ -303,7 +303,7 @@ def computePredictionScoresForUnlabeledRecordsExtension(record, stagingCollectio
                 for v in kthNeighborPredicitonScore.itervalues():
                     ktoNSimiliarityScore        = sum([val for val in v['distance'].itervalues()])
                     
-                similarityScore = float(similarityScore * ktoNSimiliarityScore) / float( ktoNSimiliarityScore ) if ktoNSimiliarityScore != 0 else float(similarityScore * ktoNSimiliarityScore);
+                similarityScore = float(similarityScore * ktoNSimiliarityScore) / float( ktoNSimiliarityScore ) if ktoNSimiliarityScore != 0 else 0;
                 labelScores[label] = similarityScore;
 
             # take the label with the max value as the predicted label
