@@ -100,6 +100,42 @@ def getTrainingSetTuples(trainingSet):
     except:
         print "error getting record tuples from training set file {0}\n".format(str(trainingSet));
 
+def getTestSetTuples(testSet):
+    """"Each training example is represented as a 
+        3-tuple with the following schema: 
+        ( {Record ID}, {Training Label}, {Feature Term String - used for feature vector extraction} )."""
+    try:
+        recordIdTupleList = [];
+        with open(testSet, 'r') as content_file:
+            # Read records into list
+            content    = content_file.read()
+            content    = content.replace("<ROOT>\n","");
+            content    = content.replace("</ROOT>\n","");
+            content    = content.split("\n")
+            content    = [m for m in content]
+            tmpStr     = ''
+            tmpStrList = []
+            for m in content:
+                if m == '':
+                    tmpStrList.append(tmpStr);
+                    tmpStr = ''
+                else:
+                    tmpStr += ' {0}'.format(m);
+
+            # Extract tuples from parsed records
+            pattern   = re.compile(R'<RECORD\sID="(\d*)">\s*<TEXT>\s*([^<>]+)\s*</TEXT>\s*(?:</RECORD>)');
+            recordIdTupleList = [];
+            #with open(R"C:\temp\datasets\knnDiagnosticsParsedRecords.txt", "a") as diag_file:
+            for str in tmpStrList:
+                #diag_file.writelines(str);
+                matchCollection = pattern.findall(str)
+                recordTuple     = (matchCollection[0][0],'',matchCollection[0][1]);
+                recordIdTupleList.append([recordTuple]);
+            recordIdTupleList = [t for t in recordIdTupleList if len(t) != 0];
+        return recordIdTupleList;
+    except:
+        print "error getting test set tuples"
+
 def calculateVectorSimilarity(x, y, similarity_func = 'euclidean'):
     '''Calculate the similarity between two vectors using the Euclidean Distance function.'''
     try:
@@ -181,14 +217,14 @@ def calcDiceCoeff(n_a,n_b,n_ab):
     except:
         print "error calculating DiceCoeff\n"
 
-def computePredictionScoresForUnlabeledRecords(record, stagingCollection, K, preserveTerms, termRankings, similarityFunction, classificationLabels, encodedRecordSubsets):
-    '''Predict the likelihood score for an unlabeled record by comparing the term feature score against each Kth neighbor
-        of a labeled training set'''
+def computePredictionScoresForLabeledTrainingRecords(record, stagingCollection, K, preserveTerms, termRankings, similarityFunction, classificationLabels, encodedRecordSubsets):
+    '''Predict the likelihood score for an labeled training record by comparing the term feature score against each Kth neighbor
+        of a labeled training set.'''
     try:
         t0 = time.time()
         unlabeledRecordPredictionScores = {};
         sample = [];
-        for record in unlabeledSet:
+        for record in labeledTrainingSet:
             recordId                                 = record[0]
             recordLabel                              = record[1]
             recordTermFeatureVector                  = record[2].split(' ');
@@ -204,9 +240,7 @@ def computePredictionScoresForUnlabeledRecords(record, stagingCollection, K, pre
                 recordTermFeatureVector                    = recordTermFeatureVector if preserveTerms else getRecordTermRankScoreVector(record,termRankings,kthNeighbor[1]);
                 # Calculate the similarity score
                 similarityScore = calcFeatureHammingDistance(neighborTermFeatureVector, recordTermFeatureVector) if similarityFunction == 'hamming' else calculateVectorSimilarity(neighborTermFeatureVector, recordTermFeatureVector, similarityFunction);
-            
-            unlabeledRecordPredictionScores[recordId]['distance'][kthNeighborId]     = similarityScore;
-
+                unlabeledRecordPredictionScores[recordId]['distance'][kthNeighborId]     = similarityScore;
 
         ###Module
         # get minimum distance from each neighbor
@@ -218,7 +252,7 @@ def computePredictionScoresForUnlabeledRecords(record, stagingCollection, K, pre
             distanceFromNeighbor      = vector[1]['distance']
             maxProb                   = min(distanceFromNeighbor.iteritems(), key=operator.itemgetter(1))[0]
             predictedLabel            = '';
-            for doc in unlabeledSet:
+            for doc in labeledTrainingSet:
                 if doc[0] == maxProb:
                     predictedLabel = doc[1];
                     break;
@@ -252,9 +286,64 @@ def computePredictionScoresForUnlabeledRecords(record, stagingCollection, K, pre
         print "\nCorrectly classified: '{0}' of '{1}' records in {2} seconds".format( len(predictedLbls),len(actualLbls),str( round(time.time() - t0,4) ) );
         return 0;
     except:
-        print "error computing predictions";
+        print "error computing predictions for labeled training set";
 
-def computePredictionScoresForUnlabeledRecordsExtension(record, stagingCollection, K, preserveTerms, termRankings, similarityFunction, classificationLabels, encodedRecordSubsets):
+def computePredictionScoresForUnlabeledTestRecordsRecords(unlabeledTestSet, stagingCollection, K, preserveTerms, termRankings, similarityFunction,classificationLabels, encodedRecordSubsets):
+    '''Predict the likelihood score for an unlabeled test record by comparing the term feature score against each Kth neighbor
+        of a labeled training set'''
+    try:
+        t0 = time.time()
+        unlabeledRecordPredictionScores = {};
+        sample = [];
+        for record in unlabeledTestSet:
+            recordId                                       = record[0]
+            recordLabel                                    = record[1]
+            recordTermFeatureVector                        = record[2].split(' ');
+            unlabeledRecordPredictionScores[recordId]      = {'distance':{} , 'predicted_label':recordLabel};
+            similarityScore                                = 0;
+            # compute 'K' nearest neighbor
+            # get k-random neighbors
+            sample = random_subset( stagingCollection, K )
+            for kthNeighbor in sample:
+                kthNeighborId                              = kthNeighbor[0];
+                kthNeighborLabel                           = kthNeighbor[1]
+                neighborTermFeatureVector                  = kthNeighbor[2];
+                # get this examples vector score if we're not calculating hamming distance
+                recordTermFeatureVector                    = recordTermFeatureVector if preserveTerms else getRecordTermRankScoreVector(record,termRankings,kthNeighbor[1]);
+                # Calculate the similarity score
+                similarityScore = calcFeatureHammingDistance(neighborTermFeatureVector, recordTermFeatureVector) if similarityFunction == 'hamming' else calculateVectorSimilarity(neighborTermFeatureVector, recordTermFeatureVector, similarityFunction);
+                unlabeledRecordPredictionScores[recordId]['distance'][kthNeighborId]     = [similarityScore,kthNeighborLabel];
+
+        ###Module
+        # get minimum distance from each neighbor
+        finalLabels = {};
+        for vector in unlabeledRecordPredictionScores.iteritems():
+            # identify which neighbor was 'nearest' to
+            # each example and output the nearest neighbor's actual class along with
+            # the example's predicted class.
+            distanceFromNeighbor      = vector[1]['distance']
+            maxProb                   = min(distanceFromNeighbor.iteritems(), key=operator.itemgetter(1))[0]
+            finalLabels[vector[0]]    = [distanceFromNeighbor[maxProb][1],vector[1]['predicted_label']];
+
+        print "...'{0}' records classified\n".format(len(finalLabels))
+        actualLbls        = [];
+        predictedLbls     = [];
+        longestClassLabel = max(len(s) for s in classificationLabels)
+        for output in sorted(finalLabels.iteritems(), key=operator.itemgetter(0)):
+            tmp      = [" "] * abs( len(output[1][0]) - longestClassLabel);
+            spacePad = "".join(tmp);
+            actualLbls.append( output[1][1] );
+            if output[1][0] == output[1][1]:
+                predictedLbls.append( output[1][0] );
+            print "Record Id: '{0:03}' Classified as '{1}'{2}".format( int(output[0]) ,output[1][0], spacePad );
+
+        print "\nCompleted classifying test set"
+        return 0;
+    except:
+        print "error predicting labels for unlabeled test set"
+        return -1;
+
+def computePredictionScoresForLabeledTrainingRecordsExtension(record, stagingCollection, K, preserveTerms, termRankings, similarityFunction, classificationLabels, encodedRecordSubsets):
     '''Predict the likelihood score for an unlabeled record by comparing the term feature score against each Kth neighbor
         of a labeled training set, uses an extended KNN implementations discussed in the following academic paper
         "An Improved k-Nearest Neighbor Algorithm  for Text Categorization" By Li Baoli, Yu Shiwen, and Lu Qin
@@ -263,7 +352,7 @@ def computePredictionScoresForUnlabeledRecordsExtension(record, stagingCollectio
         t0                              = time.time()
         unlabeledRecordPredictionScores = {};
         top_n_KNN                       = [];
-        for record in unlabeledSet:
+        for record in labeledTrainingSet:
             recordId                                       = record[0]
             recordLabel                                    = record[1]
             recordTermFeatureVector                        = record[2].split(' ');
@@ -514,6 +603,11 @@ if __name__ == '__main__':
                         file, e.g. ./path/to/training.txt'
                         ,default=''
                         ,dest="trainingSet");
+    parser.add_argument('-c', '--testSet'
+                    ,help='Path to the unlabeled medical record test set \
+                    file, e.g. ./path/to/test_set.txt'
+                    ,default=''
+                    ,dest="testSet");
     parser.add_argument('-r', '--termrankings'
                         ,help='Path to term rankings pickle file, e.g. ./path/to/termRankings.p'
                         ,default=''
@@ -552,14 +646,16 @@ if __name__ == '__main__':
         ###Module
 
         # Collect required components
-        unlabeledSet                          = getTrainingSetTuples(args.trainingSet);
-        unlabeledSet                          = removeNumbersAndPunctuation(unlabeledSet);     # Process record tuples
-        classificationLabels                  = ['SMOKER','NON-SMOKER','UNKNOWN']# classificiation labels
-        uniqueTermsList                       = getUniqueTerms(unlabeledSet);                  # get unique terms in problem space
-        similarityFunction                    = str.strip(args.similarity_func);
-        sampleType                            = str.strip(args.sampleType);
-        preserveTerms                         = True if similarityFunction == 'hamming' else False;
-        associationFunction                   = args.assocFunc;
+        labeledTrainingSet                            = getTrainingSetTuples(args.trainingSet);
+        labeledTrainingSet                            = removeNumbersAndPunctuation(labeledTrainingSet);
+        unlabeledTestSet                              = getTestSetTuples(args.testSet);
+        unlabeledTestSet                              = removeNumbersAndPunctuation(unlabeledTestSet);
+        classificationLabels                          = ['SMOKER','NON-SMOKER','UNKNOWN']# classificiation labels
+        uniqueTermsList                               = getUniqueTerms(labeledTrainingSet);                  # get unique terms in problem space
+        similarityFunction                            = str.strip(args.similarity_func);
+        sampleType                                    = str.strip(args.sampleType);
+        preserveTerms                                 = True if similarityFunction == 'hamming' else False;
+        associationFunction                           = args.assocFunc;
         
         ###Module
         termRankings = [];
@@ -573,13 +669,13 @@ if __name__ == '__main__':
             # uniqueTermsList      - for reference
             # classificationLabels - for reference
             # documentTuples       - training set to rank
-            termRanksPerClass = getTermRanksPerClass(uniqueTermsList , classificationLabels, unlabeledSet, associationFunction);
+            termRanksPerClass = getTermRanksPerClass(uniqueTermsList , classificationLabels, labeledTrainingSet, associationFunction);
             # persist rankings for training
             storeObject(termRanksPerClass,args.termRankings);
 
-        print "Cluster precision with '{0}'-neighbors estimated at {1}%\n".format(args.kNeighbors,str(getClusterPrecision(unlabeledSet, classificationLabels, args.kNeighbors)))        
+        print "Cluster precision with '{0}'-neighbors estimated at {1}%\n".format(args.kNeighbors,str(getClusterPrecision(labeledTrainingSet, classificationLabels, args.kNeighbors)))        
         # Generate feature vector encoded record subsets for each class
-        encodedRecordSubsets = getEncodedRecordsSubsetsForClassLabels(unlabeledSet,classificationLabels,termRankings, preserveTerms)
+        encodedRecordSubsets = getEncodedRecordsSubsetsForClassLabels(labeledTrainingSet,classificationLabels,termRankings, preserveTerms)
         for k,v in encodedRecordSubsets.iteritems():
             print "'{0}' label subset contains '{1}' records.".format(k,str(len(v)))
 
@@ -594,13 +690,21 @@ if __name__ == '__main__':
         K = args.kNeighbors
         print "\nUsing '{0}' sample type to extract '{1}'-neighbors from each label subset pool\n".format( sampleType, str(K) )
         stagingCollection  = getStagingSamples(normalizedSet,classificationLabels,K,sampleType, preserveTerms)
-        # compute similarity vectors for each class label for each record
+        # compute predictions for labeled training set
         # for each document in the training set...
-        print "Training '{0}' unlabeled examples using a sample of '{1}', '{2}' records from each label subset pool\n".format(str(len(unlabeledSet)), str(K),sampleType)
+        print "Training '{0}' unlabeled examples using a sample of '{1}', '{2}' records from each label subset pool\n".format(str(len(labeledTrainingSet)), str(K),sampleType)
         print "Using the '{0}' distance function as a similarity measure...\n".format(similarityFunction)
         if args.Extension == True:
-            print "Using extended KNN"
-            computePredictionScoresForUnlabeledRecordsExtension(unlabeledSet, stagingCollection, K, preserveTerms, termRankings, similarityFunction,classificationLabels, encodedRecordSubsets);
+            print "Training using extended KNN"
+            computePredictionScoresForLabeledTrainingRecordsExtension(labeledTrainingSet, stagingCollection, K, preserveTerms, termRankings, similarityFunction,classificationLabels, encodedRecordSubsets);
         else:
-            print "Using regular KNN"
-            computePredictionScoresForUnlabeledRecords(unlabeledSet, stagingCollection, K, preserveTerms, termRankings, similarityFunction,classificationLabels, encodedRecordSubsets);
+            print "Training using standard KNN"
+            computePredictionScoresForLabeledTrainingRecords(labeledTrainingSet, stagingCollection, K, preserveTerms, termRankings, similarityFunction,classificationLabels, encodedRecordSubsets);
+
+        # compute predictions for unlabeled test set
+        if args.Extension == True:
+            print "Predicting classification for unlabeled test set using extended KNN"
+            computePredictionScoresForUnlabeledTestRecordsExtension(unlabeledTestSet, stagingCollection, K, preserveTerms, termRankings, similarityFunction,classificationLabels, encodedRecordSubsets);
+        else:
+            print "Predicting classification for unlabeled test set using standard KNN"
+            computePredictionScoresForUnlabeledTestRecordsRecords(unlabeledTestSet, stagingCollection, K, preserveTerms, termRankings, similarityFunction,classificationLabels, encodedRecordSubsets);
