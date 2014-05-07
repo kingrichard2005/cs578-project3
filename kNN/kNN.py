@@ -270,7 +270,6 @@ def computePredictionScoresForLabeledTrainingRecords(record, stagingCollection, 
                 predictedLbls.append( output[1][0] );
             print "Record Id: '{0:03}' Classified as '{1}'{2},Actual Classification: '{3}'".format( int(output[0]) ,output[1][0], spacePad,output[1][1]);
 
-        # precision = # of correct classifications / # of total unlabeled records per class
         print "\n"
         for label in classificationLabels:
             tmpActual    = len([e for e in encodedRecordSubsets.itervalues() if e[0][1] == label])
@@ -433,6 +432,98 @@ def computePredictionScoresForLabeledTrainingRecordsExtension(record, stagingCol
         return 0;
     except:
         print "error computing predictions";
+
+def computePredictionScoresForUnlabeledTestRecordsRecordsExtension(unlabeledTestSet, stagingCollection, K, preserveTerms, termRankings, similarityFunction,classificationLabels, encodedRecordSubsets):
+    '''Predict the likelihood score for an labeled record by comparing the term feature score against each Kth neighbor
+        of a labeled training set, uses an extended KNN implementations discussed in the following academic paper
+        "An Improved k-Nearest Neighbor Algorithm  for Text Categorization" By Li Baoli, Yu Shiwen, and Lu Qin
+        ref: http://arxiv.org/ftp/cs/papers/0306/0306099.pdf"'''
+    try:
+        t0                              = time.time()
+        unlabeledRecordPredictionScores = {};
+        top_n_KNN                       = [];
+        for record in labeledTrainingSet:
+            recordId                                       = record[0]
+            recordLabel                                    = record[1]
+            recordTermFeatureVector                        = record[2].split(' ');
+            unlabeledRecordPredictionScores[recordId]      = {'distance':{} , 'predicted_label':recordLabel};
+            similarityScore                                = 0;
+            # compute 'K' nearest neighbor
+            # get k-random neighbors
+            top_n_KNN = random_subset( stagingCollection, K )
+
+            # Calculate similarity score across each class label
+            # the max score is the actual label for this record
+            labelScores = []
+            for label in classificationLabels:
+                for kthNeighbor in top_n_KNN:
+                    labelScores                                = {label:0}
+                    kthNeighborId                              = kthNeighbor[0];
+                    neighborTermFeatureVector                  = kthNeighbor[2];
+                    # get this examples vector score if we're not calculating hamming distance
+                    recordTermFeatureVector                    = recordTermFeatureVector if preserveTerms else getRecordTermRankScoreVector(record,termRankings,kthNeighbor[1]);
+                    # Calculate the similarity score
+                    similarityScore                            = calcFeatureHammingDistance(neighborTermFeatureVector, recordTermFeatureVector) if similarityFunction == 'hamming' else calculateVectorSimilarity(neighborTermFeatureVector, recordTermFeatureVector, similarityFunction);
+
+
+                localSubset = [n for n in top_n_KNN if n[1] == label]
+                kthNeighborPredicitonScore = {};
+                for otherKNeighbor in [n for n in localSubset if n[0] != kthNeighborId ]:
+                    otherKNeighborId                                                                 = otherKNeighbor[0];
+                    otherKNeighborLabel                                                              = record[1]
+                    otherKNeighborTermFeatureVector                                                  = otherKNeighbor[2];
+                    kthNeighborPredicitonScore[kthNeighborId]                                        = {'distance':{} , 'actual_label':otherKNeighborLabel, 'predicted_label':otherKNeighborLabel};
+                    # We don't calculate the hamming distance since neighbors are already encoded
+                    # Calculate the similarity score, unlabeled record vs labeled neighbor
+                    kToNScore                                                                   = calcFeatureHammingDistance(neighborTermFeatureVector, otherKNeighborTermFeatureVector) if similarityFunction == 'hamming' else calculateVectorSimilarity(neighborTermFeatureVector, otherKNeighborTermFeatureVector, similarityFunction);
+                    kthNeighborPredicitonScore[kthNeighborId]['distance'][otherKNeighborId]     = kToNScore;
+                            
+                ktoNSimiliarityScore = 0
+                for v in kthNeighborPredicitonScore.itervalues():
+                    ktoNSimiliarityScore        = sum([val for val in v['distance'].itervalues()])
+                    
+                similarityScore = float(similarityScore * ktoNSimiliarityScore) / float( ktoNSimiliarityScore ) if ktoNSimiliarityScore != 0 else 0;
+                labelScores[label] = similarityScore;
+
+            # take the label with the max value as the predicted label
+            unlabeledRecordPredictionScores[recordId]['predicted_label']    = max(labelScores.iteritems(), key=operator.itemgetter(1))[0];
+
+        ###Module
+        # get minimum distance from each neighbor
+        finalLabels = {};
+        for vector in unlabeledRecordPredictionScores.iteritems():
+            finalLabels[vector[0]]    = [vector[1]['predicted_label'],vector[1]['actual_label']];
+
+        print "...'{0}' records classified\n".format(len(finalLabels))
+        actualLbls        = [];
+        predictedLbls     = [];
+        longestClassLabel = max(len(s) for s in classificationLabels)
+        for output in sorted(finalLabels.iteritems(), key=operator.itemgetter(0)):
+            tmp      = [" "] * abs( len(output[1][0]) - longestClassLabel);
+            spacePad = "".join(tmp);
+            actualLbls.append( output[1][1] );
+            if output[1][0] == output[1][1]:
+                predictedLbls.append( output[1][0] );
+            print "Record Id: '{0:03}' Classified as '{1}'{2}".format( int(output[0]) ,output[1][0], spacePad );
+
+        # precision = # of correct classifications / # of total unlabeled records per class
+        print "\n"
+        for label in classificationLabels:
+            tmpActual    = len([e for e in encodedRecordSubsets.itervalues() if e[0][1] == label])
+            tmpPredicted = len([e for e in predictedLbls if e == label])
+            precision    = round( (float( tmpActual )/ float(tmpPredicted) * 100) if tmpPredicted > 0 else 0, 3);
+            recall       = round( (float( tmpPredicted )/ float(  tmpActual )) if tmpActual > 0 else 0, 3)
+            F1Score      = round(float(2 * (precision * recall)) / float(precision + recall), 3) if (precision + recall) > 0 else 0;
+            print "Label '{0}':".format(label)
+            print "Precision with '{0}' nearest neighbors {1}%".format(args.kNeighbors,str(precision) )
+            print "Recall with '{0}' nearest neighbors {1}%".format(args.kNeighbors,str(recall) )
+            print "F1 score with '{0}' nearest neighbors {1}\n".format(args.kNeighbors,str(F1Score) )
+
+        print "\nCorrectly classified: '{0}' of '{1}' records in {2} seconds".format( len(predictedLbls),len(actualLbls),str( round(time.time() - t0,4) ) );
+        return 0;
+    except:
+        print "error predicting labels for unlabeled test set"
+        return -1;
 
 def getTermRanksPerClass(uniqueTermsList , classificationLabels, documentTuples, associationFunction = 'chi-sq'):
     '''Construct a lookup of term rankings per class / label'''
@@ -639,8 +730,8 @@ if __name__ == '__main__':
                 ,help="Enables the KNN extended implementation.");
 
     args = parser.parse_args();
-    # check arguments, training set is required.
-    if os.path.isfile( args.trainingSet ) is False or os.path.isfile( args.termRankings ) is False:
+    # check for required arguments
+    if os.path.isfile( args.trainingSet ) is False or os.path.isfile( args.termRankings ) is False or os.path.isfile( args.testSet ) is False:
         parser.print_help()
     else:
         ###Module
