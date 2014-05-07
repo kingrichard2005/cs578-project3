@@ -1,7 +1,8 @@
 #-------------------------------------------------------------------------------
 # Name:        cs-578-project 3
 # Purpose:      A prototype trainer for a Naive Bayes classifier that 
-# attempts to predict smoaking status for unlabeled patients as one of three categories: 'SMOKER, 'NON-SMOKER'
+# attempts to predict the smoking status likelihood for unlabeled patients 
+# falling into one of three categories: 'SMOKER, 'NON-SMOKER'
 # , or 'UNKNOWN'.  The classifier is trained using a precompiled collection of labeled training record data
 #   
 # Author:      kingrichard2005
