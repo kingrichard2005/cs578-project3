@@ -144,23 +144,26 @@ def getTestSetTuples(testSet):
     except:
         print "error getting test set tuples"
 
-def computeLabelPrediction( w,c,termClassOccurrenceLookup,totalTermsInTrainingDocPerClass,recordTermFeatureVector, mu = 0.75, useBayesianSmoothing = False ):
-    ''' Computes the probability that term 'w' belongs to classl 'c' '''
-    tf         = termClassOccurrenceLookup[w][c];
-    cfw        = sum( i[1] for i in termClassOccurrenceLookup[w].iteritems() );
-    # |c|
-    _c         = math.fabs(totalTermsInTrainingDocPerClass[c])
-    C          = sum(i[1] for i in totalTermsInTrainingDocPerClass.iteritems());
-    P_wc = 0.0
-    if useBayesianSmoothing:
-        # V
-        V          = float(len(recordTermFeatureVector))
-        # Bayesian smoothing estimate
-        P_wc       = ( tf + 1 ) / ( math.fabs(_c) + math.fabs(V) );
-    else:
-        # Dirichlet smoothing estimate
-        P_wc      = ( tf + ( mu * ( cfw / C ) ) ) / ( _c + mu );
-    return P_wc;
+def computePrediction( w,c,termClassOccurrenceLookup,totalTermsInTrainingDocPerClass,recordTermFeatureVector, mu = 0.75, useBayesianSmoothing = False ):
+    try:
+        ''' Computes the probability that term 'w' belongs to classl 'c' '''
+        tf         = termClassOccurrenceLookup[w][c] if termClassOccurrenceLookup.has_key(w) else 0.0;
+        cfw        = sum( i[1] for i in termClassOccurrenceLookup[w].iteritems()) if termClassOccurrenceLookup.has_key(w) else 0.0;
+        # |c|
+        _c         = math.fabs(totalTermsInTrainingDocPerClass[c])
+        C          = sum(i[1] for i in totalTermsInTrainingDocPerClass.iteritems());
+        P_wc = 0.0
+        if useBayesianSmoothing:
+            # V
+            V          = float(len(recordTermFeatureVector))
+            # Bayesian smoothing estimate
+            P_wc       = ( tf + 1 ) / ( math.fabs(_c) + math.fabs(V) );
+        else:
+            # Dirichlet smoothing estimate
+            P_wc      = ( tf + ( mu * ( cfw / C ) ) ) / ( _c + mu );
+        return P_wc;
+    except:
+        print "error computing likelihood probability"
 
 def generateLabeledRecordPredictions(labeledTrainingSet,classificationLabels,proportionLookup,mu, smoothingFunction = 'bayes'):
     try:
@@ -181,7 +184,7 @@ def generateLabeledRecordPredictions(labeledTrainingSet,classificationLabels,pro
                  # compute P_wc label probability vector for all terms in document record event / occurrence space
                 for term in recordTermFeatureVector:
                     # compute probability that term is related to class
-                    P_wc = computeLabelPrediction( term
+                    P_wc = computePrediction( term
                                                   ,classLabel
                                                   ,termClassOccurrenceLookup
                                                   ,totalTermsInTrainingDocPerClass
@@ -257,6 +260,82 @@ def generateLabeledRecordPredictions(labeledTrainingSet,classificationLabels,pro
     except:
         print "error generating Labeled Record Predictions"
 
+def generateUnlabeledRecordPredictions(UnlabeledTestSet,classificationLabels,proportionLookup,mu, smoothingFunction = 'bayes'):
+    try:
+        # compute probability vectors P(C|D) for each class label for each record
+        # for each document in the training set...
+        recordClassificationStats = {};
+        for record in UnlabeledTestSet:
+            recordId                                 = record[0]
+            recordLabel                              = record[1]
+            recordTermFeatureVector                  = record[2].split(' ');
+            recordClassificationStats[recordId]      = {'predictions':{} , 'actual_label':recordLabel};
+            # compute label probability vector for each document record ...
+            for classLabel in classificationLabels:
+                # P(c)
+                classProportion       = proportionLookup[classLabel];
+                probabilityListVector = []
+                 # for each term in record feature vector
+                 # compute P_wc label probability vector for all terms in document record event / occurrence space
+                for term in recordTermFeatureVector:
+                    # compute probability that term is related to class
+                    P_wc = computePrediction( term
+                                                  ,classLabel
+                                                  ,termClassOccurrenceLookup
+                                                  ,totalTermsInTrainingDocPerClass
+                                                  ,recordTermFeatureVector
+                                                  ,mu
+                                                  ,True if smoothingFunction == 'bayes' else False #useBayesianSmoothing = args.BayesianSmoothing 
+                                                  );
+                    probabilityListVector.append(P_wc);
+
+                # aggregate product is the first element plus the product
+                # we add zero prediction values for a term to the aggregate instead of multiplying
+                aggregateProduct  = probabilityListVector[0]; 
+                tmp               = reduce( lambda x,y: x * y if x > 0 and y > 0 else x + y , probabilityListVector[1:]);
+                aggregateProduct  = ( (aggregateProduct * tmp) if aggregateProduct > 0.0 else (aggregateProduct + tmp) ) * classProportion;
+                acc               = 0;
+                for i in xrange(0,len(classificationLabels)):
+                    acc += aggregateProduct;
+
+                # avoid computing likelihood if the accumulated likelihood for all classes is 0.0
+                computedLikelihood                                                 = 0.0 if acc == 0.0 else float(aggregateProduct / acc);
+                recordClassificationStats[recordId]['predictions'][classLabel]     = computedLikelihood;
+        
+        # get maximum probability from each class
+        finalLabels = {}
+        for vector in recordClassificationStats.iteritems():
+            # get feature vectors
+            predictedOutcomesPerClass = vector[1]['predictions']
+            maxProb                   = max(predictedOutcomesPerClass.iteritems(), key=operator.itemgetter(1))[0]
+            finalLabels[vector[0]]    = [maxProb,vector[1]['actual_label']];
+
+        print "...'{0}' records classified\n".format(len(finalLabels))
+        actualLbls        = [];
+        predictedLbls     = [];
+        longestClassLabel = max(len(s) for s in classificationLabels)
+        for output in sorted(finalLabels.iteritems(), key=operator.itemgetter(0)):
+            tmp      = [" "] * abs( len(output[1][0]) - longestClassLabel);
+            spacePad = "".join(tmp);
+            actualLbls.append( (output[0],output[1][1]) );
+            if output[1][0] == output[1][1]:
+                predictedLbls.append( (output[0],output[1][0]) );
+            print "Record Id: '{0:03}' Classified as '{1}'{2}".format( int(output[0]) ,output[1][0], spacePad);
+
+        actualLbls        = [];
+        predictedLbls     = [];
+        longestClassLabel = max(len(s) for s in classificationLabels)
+        for output in sorted(finalLabels.iteritems(), key=operator.itemgetter(0)):
+            tmp      = [" "] * abs( len(output[1][0]) - longestClassLabel);
+            spacePad = "".join(tmp);
+            actualLbls.append( output[1][1] );
+            if output[1][0] == output[1][1]:
+                predictedLbls.append( output[1][0] );
+            print "Record Id: '{0:03}' Classified as '{1}'{2}".format( int(output[0]) ,output[1][0], spacePad);
+        return 0;
+    except:
+        print "error generating predictions for unlabeled tests set"
+
 def scrapeNsciaTerms(pattern):
     '''Read and parse medical terms from the National Spinal Cord Injury Association (NSCIA) Encyclopedia
         http://www.spinalcord.org/resource-center/askus/index.php?pg=kb.page&id=1413'''
@@ -327,9 +406,10 @@ if __name__ == '__main__':
                             };
         ####
         # For each document in the training set, compute probability for each label
-        # configurable tuning parameter...or do we set it to the total unique terms in the record collection??
-        # TODO: confirm
+        # configurable tuning parameter...or do we set it to the total unique terms in the record collection?
+        t0                              = time.time()
         mu = args.mu if args.mu is not None else len(uniqueTermsList);
+        
         generateLabeledRecordPredictions(
                                          labeledTrainingSet
                                          ,classificationLabels
@@ -337,3 +417,14 @@ if __name__ == '__main__':
                                          ,mu
                                          ,'bayes' if args.BayesianSmoothing == True else 'Dirichlet'
                                          );
+        print "\nTime to Train: '{0}' seconds\n".format( str( round(time.time() - t0,4) ) );
+        
+        print "Classifying Test Set..\n";
+        generateUnlabeledRecordPredictions(
+                                         unlabeledTestSet
+                                         ,classificationLabels
+                                         ,proportionLookup
+                                         ,mu
+                                         ,'bayes' if args.BayesianSmoothing == True else 'Dirichlet'
+                                         );
+        print "\nClassifying Test Set..";

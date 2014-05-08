@@ -28,7 +28,7 @@ def hamdist(str1, str2):
             diffs += 1
     return diffs;
 
-def random_subset( sampleList, K ):
+def random_subset( sampleList, numberToSample ):
     '''(REVIEW) Implementation of resevoir sampling in Python borrowed from
         http://propersubset.com/2010/04/choosing-random-elements.html'''
     try:
@@ -36,11 +36,11 @@ def random_subset( sampleList, K ):
         N = 0
         for item in sampleList:
             N += 1
-            if len( result ) < K:
+            if len( result ) < numberToSample:
                 result.append( item )
             else:
                 s = int(random.random() * N)
-                if s < K:
+                if s < numberToSample:
                     result[ s ] = item
 
         return result
@@ -221,7 +221,6 @@ def computePredictionScoresForLabeledTrainingRecords(record, stagingCollection, 
     '''Predict the likelihood score for an labeled training record by comparing the term feature score against each Kth neighbor
         of a labeled training set.'''
     try:
-        t0 = time.time()
         unlabeledRecordPredictionScores = {};
         sample = [];
         for record in labeledTrainingSet:
@@ -282,7 +281,7 @@ def computePredictionScoresForLabeledTrainingRecords(record, stagingCollection, 
             print "Recall with '{0}' nearest neighbors {1}%".format(args.kNeighbors,str(recall) )
             print "F1 score with '{0}' nearest neighbors {1}\n".format(args.kNeighbors,str(F1Score) )
 
-        print "\nCorrectly classified: '{0}' of '{1}' records in {2} seconds".format( len(predictedLbls),len(actualLbls),str( round(time.time() - t0,4) ) );
+        print "\nCorrectly classified: '{0}' of '{1}' records".format( len(predictedLbls),len(actualLbls) );
         return 0;
     except:
         print "error computing predictions for labeled training set";
@@ -291,7 +290,6 @@ def computePredictionScoresForUnlabeledTestRecordsRecords(unlabeledTestSet, stag
     '''Predict the likelihood score for an unlabeled test record by comparing the term feature score against each Kth neighbor
         of a labeled training set'''
     try:
-        t0 = time.time()
         unlabeledRecordPredictionScores = {};
         sample = [];
         for record in unlabeledTestSet:
@@ -348,7 +346,6 @@ def computePredictionScoresForLabeledTrainingRecordsExtension(record, stagingCol
         "An Improved k-Nearest Neighbor Algorithm  for Text Categorization" By Li Baoli, Yu Shiwen, and Lu Qin
         ref: http://arxiv.org/ftp/cs/papers/0306/0306099.pdf"'''
     try:
-        t0                              = time.time()
         unlabeledRecordPredictionScores = {};
         top_n_KNN                       = [];
         for record in labeledTrainingSet:
@@ -428,7 +425,7 @@ def computePredictionScoresForLabeledTrainingRecordsExtension(record, stagingCol
             print "Recall with '{0}' nearest neighbors {1}%".format(args.kNeighbors,str(recall) )
             print "F1 score with '{0}' nearest neighbors {1}\n".format(args.kNeighbors,str(F1Score) )
 
-        print "\nCorrectly classified: '{0}' of '{1}' records in {2} seconds".format( len(predictedLbls),len(actualLbls),str( round(time.time() - t0,4) ) );
+        print "\nCorrectly classified: '{0}' of '{1}' records".format( len(predictedLbls),len(actualLbls) );
         return 0;
     except:
         print "error computing predictions";
@@ -439,7 +436,6 @@ def computePredictionScoresForUnlabeledTestRecordsRecordsExtension(unlabeledTest
         "An Improved k-Nearest Neighbor Algorithm  for Text Categorization" By Li Baoli, Yu Shiwen, and Lu Qin
         ref: http://arxiv.org/ftp/cs/papers/0306/0306099.pdf"'''
     try:
-        t0                              = time.time()
         unlabeledRecordPredictionScores = {};
         top_n_KNN                       = [];
         for record in labeledTrainingSet:
@@ -519,7 +515,7 @@ def computePredictionScoresForUnlabeledTestRecordsRecordsExtension(unlabeledTest
             print "Recall with '{0}' nearest neighbors {1}%".format(args.kNeighbors,str(recall) )
             print "F1 score with '{0}' nearest neighbors {1}\n".format(args.kNeighbors,str(F1Score) )
 
-        print "\nCorrectly classified: '{0}' of '{1}' records in {2} seconds".format( len(predictedLbls),len(actualLbls),str( round(time.time() - t0,4) ) );
+        print "\nCorrectly classified: '{0}' of '{1}' records".format( len(predictedLbls),len(actualLbls) );
         return 0;
     except:
         print "error predicting labels for unlabeled test set"
@@ -724,10 +720,6 @@ if __name__ == '__main__':
                     ,help="The method to sample 'K' records from each label subset, top 'K''\
                     are records with the max combined term relevance score [default=Krandom|topK],'\
                     this sample type doesn't apply when using the hamming distance similarity.");
-    parser.add_argument('-e','--extension'
-                ,dest="Extension"
-                ,action = 'store_true'
-                ,help="Enables the KNN extended implementation.");
 
     args = parser.parse_args();
     # check for required arguments
@@ -770,11 +762,12 @@ if __name__ == '__main__':
         for k,v in encodedRecordSubsets.iteritems():
             print "'{0}' label subset contains '{1}' records.".format(k,str(len(v)))
 
-        # trim each label subset to normalize each to the length of the shortest subset
+        # randomly sample records from each label subset with each sample equal
+        # to the length of the shortest subset
         shortest      = min([len(e) for e in encodedRecordSubsets.itervalues()]);
         normalizedSet = {};
         for k,v in encodedRecordSubsets.iteritems():
-            normalizedSet[k] = v[:shortest]
+            normalizedSet[k] = random_subset( v, shortest )
 
         ###Module
         # For each document in the training set, compute similarity to 'K' nearest neighbors for each label
@@ -785,17 +778,11 @@ if __name__ == '__main__':
         # for each document in the training set...
         print "Training '{0}' unlabeled examples using a sample of '{1}', '{2}' records from each label subset pool\n".format(str(len(labeledTrainingSet)), str(K),sampleType)
         print "Using the '{0}' distance function as a similarity measure...\n".format(similarityFunction)
-        if args.Extension == True:
-            print "Training using extended KNN"
-            computePredictionScoresForLabeledTrainingRecordsExtension(labeledTrainingSet, stagingCollection, K, preserveTerms, termRankings, similarityFunction,classificationLabels, encodedRecordSubsets);
-        else:
-            print "Training using standard KNN"
-            computePredictionScoresForLabeledTrainingRecords(labeledTrainingSet, stagingCollection, K, preserveTerms, termRankings, similarityFunction,classificationLabels, encodedRecordSubsets);
+        print "Classifying Training Set..\n";
+        t0                              = time.time()
+        computePredictionScoresForLabeledTrainingRecords(labeledTrainingSet, stagingCollection, K, preserveTerms, termRankings, similarityFunction,classificationLabels, encodedRecordSubsets);
+        print "\nTime to Train: '{0}' seconds\n".format( str( round(time.time() - t0,4) ) );
 
         # compute predictions for unlabeled test set
-        if args.Extension == True:
-            print "Predicting classification for unlabeled test set using extended KNN"
-            computePredictionScoresForUnlabeledTestRecordsExtension(unlabeledTestSet, stagingCollection, K, preserveTerms, termRankings, similarityFunction,classificationLabels, encodedRecordSubsets);
-        else:
-            print "Predicting classification for unlabeled test set using standard KNN"
-            computePredictionScoresForUnlabeledTestRecordsRecords(unlabeledTestSet, stagingCollection, K, preserveTerms, termRankings, similarityFunction,classificationLabels, encodedRecordSubsets);
+        print "Classifying Test Set..\n";
+        computePredictionScoresForUnlabeledTestRecordsRecords(unlabeledTestSet, stagingCollection, K, preserveTerms, termRankings, similarityFunction,classificationLabels, encodedRecordSubsets);
