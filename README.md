@@ -1,6 +1,6 @@
 cs578-project3
 =====
-This is an implementation of the Naive Bayes and K-Nearest Neighbor machine learning classification algorithms used to derive a classification model for predicting a set of labels for classifying scrubbed medical patient records into one of three categories: Smokers, Non-Smokers or Unknown, by training a classifier model using an existing set of medical records.
+This is an implementation of the Naive Bayes and K-Nearest Neighbor machine learning classification algorithms used to derive a classification model for predicting a set of labels for classifying scrubbed medical patient records into one of three categories: Smokers, Non-Smokers or Unknown, by training a classifier model using an existing set of pre-labeled medical record training data.
 
 ```
 Medical Record Format Schema:
